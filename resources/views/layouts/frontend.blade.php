@@ -139,7 +139,6 @@
 
                 <div class="navbar-actions">
                     <a href="{{ route('appointment') }}" class="btn btn--dark btn--sm" wire:navigate>Register</a>
-                    <a href="{{ $diagnosticTestUrl }}" class="btn btn--outline btn--sm navbar-actions__diagnostic" target="_blank" rel="noopener noreferrer">Take Diagnostic Test</a>
                     <button type="button" class="navbar-toggle" :aria-expanded="mobileOpen" aria-controls="navbar-mobile" aria-label="Open menu" @click="mobileOpen = !mobileOpen">
                         <span class="navbar-toggle__bar"></span>
                         <span class="navbar-toggle__bar"></span>
@@ -163,7 +162,6 @@
                 <a href="{{ route('facilities') }}" wire:navigate @click="mobileOpen = false">Facilities</a>
                 <a href="{{ route('gallery.index') }}" wire:navigate @click="mobileOpen = false">Gallery</a>
                 <a href="{{ route('appointment') }}" class="btn btn--dark" wire:navigate @click="mobileOpen = false">Register</a>
-                <a href="{{ $diagnosticTestUrl }}" class="btn btn--outline" target="_blank" rel="noopener noreferrer" @click="mobileOpen = false">Take Diagnostic Test</a>
             </div>
         </nav>
 
