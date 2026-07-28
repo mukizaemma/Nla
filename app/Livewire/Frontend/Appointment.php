@@ -219,13 +219,18 @@ class Appointment extends Component
 
     protected function notifySchoolOfRegistration(StudentRegistration $registration, ?WebsiteSetting $settings): void
     {
-        $adminEmail = $settings?->email;
+        $adminEmail = $settings?->email ?: config('mail.notification_to');
         if (! $adminEmail) {
             return;
         }
 
         try {
-            Mail::to($adminEmail)->send(new StudentRegistrationSubmitted($registration));
+            $mailable = Mail::to($adminEmail);
+            $cc = config('mail.notification_cc', []);
+            if (! empty($cc)) {
+                $mailable->cc($cc);
+            }
+            $mailable->send(new StudentRegistrationSubmitted($registration));
         } catch (\Throwable $e) {
             Log::warning('Failed to send admin registration notification', [
                 'registration_id' => $registration->id,

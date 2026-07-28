@@ -118,6 +118,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Notification recipients (school inbox)
+    |--------------------------------------------------------------------------
+    */
+
+    'notification_to' => env('MAIL_NOTIFICATION_TO'),
+    'notification_cc' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('MAIL_NOTIFICATION_CC', ''))
+    ))),
+
+    /*
+    |--------------------------------------------------------------------------
     | Markdown Mail Settings
     |--------------------------------------------------------------------------
     |
