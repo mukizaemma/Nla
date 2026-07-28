@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Auth;
 
 // Public frontend (Livewire SPA-like with wire:navigate)
 Route::get('/', \App\Livewire\Frontend\Home::class)->name('home');
+Route::get('/robots.txt', [\App\Http\Controllers\SitemapController::class, 'robots'])->name('robots');
+Route::get('/sitemap.xml', [\App\Http\Controllers\SitemapController::class, 'sitemap'])->name('sitemap');
 Route::get('/about', \App\Livewire\Frontend\About::class)->name('about');
 Route::redirect('/about/mission-vision', '/about?section=mission-vision')->name('about.mission-vision');
 Route::redirect('/about/core-values', '/about?section=core-values')->name('about.core-values');

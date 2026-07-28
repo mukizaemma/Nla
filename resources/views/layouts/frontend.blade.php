@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="description" content="{{ (($websiteSettings ?? null)?->company_name ?? config('app.name')) . ' — ' . (($siteContent ?? [])['global']['meta_description'] ?? '') }}">
+    <link rel="canonical" href="{{ url()->current() }}">
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="{{ url('/sitemap.xml') }}">
     <title>@yield('title', ($websiteSettings ?? null)?->company_name ?? config('app.name'))</title>
 
     @php
