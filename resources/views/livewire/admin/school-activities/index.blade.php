@@ -86,12 +86,12 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Excerpt (short summary)</label>
-                                <textarea class="form-control summernote" wire:model.defer="excerpt" rows="2"></textarea>
+                                <textarea class="form-control summernote" wire:model.defer="excerpt" rows="2" data-summernote-height="160"></textarea>
                                 @error('excerpt') <small class="text-danger">{{ $message }}</small> @enderror
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Content</label>
-                                <textarea class="form-control summernote" wire:model.defer="content" rows="6"></textarea>
+                                <textarea class="form-control summernote" wire:model.defer="content" rows="6" data-summernote-height="280"></textarea>
                                 @error('content') <small class="text-danger">{{ $message }}</small> @enderror
                             </div>
                             <div class="mb-3">

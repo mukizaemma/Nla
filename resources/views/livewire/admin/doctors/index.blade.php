@@ -152,7 +152,7 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Biography</label>
-                                <textarea class="form-control summernote" wire:model.defer="biography" rows="4"></textarea>
+                                <textarea class="form-control summernote" wire:model.defer="biography" rows="4" data-summernote-height="220"></textarea>
                                 @error('biography') <small class="text-danger">{{ $message }}</small> @enderror
                             </div>
                             <div class="mb-3">

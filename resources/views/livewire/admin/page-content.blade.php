@@ -123,7 +123,7 @@
                                 <div class="col-md-4"><input type="text" class="form-control form-control-sm" wire:model.defer="sections.home.explore_cards.{{ $idx }}.title" placeholder="Title"></div>
                                 <div class="col-md-4"><input type="text" class="form-control form-control-sm" wire:model.defer="sections.home.explore_cards.{{ $idx }}.url" placeholder="/facilities"></div>
                                 <div class="col-md-4"><input type="text" class="form-control form-control-sm" wire:model.defer="sections.home.explore_cards.{{ $idx }}.key" placeholder="Key (optional)"></div>
-                                <div class="col-12"><textarea class="form-control form-control-sm" rows="2" wire:model.defer="sections.home.explore_cards.{{ $idx }}.description" placeholder="Description"></textarea></div>
+                                <div class="col-12"><textarea class="form-control form-control-sm summernote" rows="2" data-summernote-height="140" wire:model.defer="sections.home.explore_cards.{{ $idx }}.description" placeholder="Description"></textarea></div>
                             </div>
                         </div>
                     @endforeach

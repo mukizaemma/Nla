@@ -254,8 +254,15 @@
 
         (function () {
             const getJq = () => window.jQuery || window.$;
+            let refreshTimer = null;
+            let hooksBound = false;
 
-            const isVisible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+            const isVisible = (el) => {
+                if (!el || !el.isConnected) return false;
+                // Treat Bootstrap/Livewire modals as visible even during layout.
+                if (el.closest('.modal.show, .modal.d-block')) return true;
+                return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+            };
 
             const destroySummernote = (el, $jq) => {
                 if (!el.classList.contains('is-summernote-init')) {
@@ -267,12 +274,22 @@
                 el.classList.remove('is-summernote-init');
             };
 
+            const cleanupOrphanEditors = () => {
+                document.querySelectorAll('.note-editor').forEach((editor) => {
+                    const textarea = editor.previousElementSibling;
+                    if (!textarea || textarea.tagName !== 'TEXTAREA' || !textarea.classList.contains('summernote')) {
+                        editor.remove();
+                    }
+                });
+            };
+
             const destroyAllSummernote = () => {
                 const $jq = getJq();
                 if (!$jq || !$jq.fn || typeof $jq.fn.summernote === 'undefined') {
                     return;
                 }
                 document.querySelectorAll('textarea.summernote').forEach((el) => destroySummernote(el, $jq));
+                cleanupOrphanEditors();
             };
 
             const syncSummernoteToLivewire = () => {
@@ -281,10 +298,9 @@
                 document.querySelectorAll('textarea.summernote.is-summernote-init').forEach((el) => {
                     try {
                         const code = $jq(el).summernote('code');
-                        if (code !== el.value) {
-                            el.value = code;
-                            el.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
+                        el.value = code === '<p><br></p>' ? '' : code;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
                     } catch (e) {}
                 });
             };
@@ -305,10 +321,11 @@
                     }
 
                     const initial = el.value || '';
-                    const height = parseInt(el.dataset.summernoteHeight || '280', 10);
+                    const height = parseInt(el.dataset.summernoteHeight || (el.closest('.modal') ? '220' : '280'), 10);
 
                     $jq(el).summernote({
                         height: height,
+                        placeholder: el.getAttribute('placeholder') || 'Write here…',
                         toolbar: [
                             ['style', ['bold', 'italic', 'underline', 'clear']],
                             ['font', ['strikethrough']],
@@ -323,10 +340,13 @@
                                 }
                             },
                             onChange: function (contents) {
-                                el.value = contents;
+                                const cleaned = contents === '<p><br></p>' ? '' : contents;
+                                el.value = cleaned;
                                 el.dispatchEvent(new Event('input', { bubbles: true }));
                             },
                             onBlur: function () {
+                                const code = $jq(el).summernote('code');
+                                el.value = code === '<p><br></p>' ? '' : code;
                                 el.dispatchEvent(new Event('change', { bubbles: true }));
                             },
                             onImageUpload: function (files) {
@@ -352,21 +372,38 @@
             };
 
             const refreshSummernote = () => {
+                syncSummernoteToLivewire();
                 destroyAllSummernote();
-                requestAnimationFrame(initSummernote);
+                requestAnimationFrame(() => {
+                    setTimeout(initSummernote, 40);
+                });
+            };
+
+            const scheduleRefresh = () => {
+                clearTimeout(refreshTimer);
+                refreshTimer = setTimeout(refreshSummernote, 60);
             };
 
             const boot = () => {
                 refreshSummernote();
 
-                if (window.Livewire && typeof Livewire.hook === 'function') {
-                    Livewire.hook('message.processed', () => refreshSummernote());
+                if (hooksBound || !window.Livewire || typeof Livewire.hook !== 'function') {
+                    return;
                 }
+                hooksBound = true;
+
+                // Livewire 4: re-init after DOM morph (modals, tabs, nested updates)
+                Livewire.hook('morphed', () => scheduleRefresh());
+                Livewire.hook('commit', ({ succeed }) => {
+                    succeed(() => scheduleRefresh());
+                });
             };
 
             document.addEventListener('submit', syncSummernoteToLivewire, true);
             document.addEventListener('click', function (e) {
-                const btn = e.target.closest('[wire\\:click*="save"], [wire\\:click*="Save"]');
+                const btn = e.target.closest(
+                    '[wire\\:click*="save"], [wire\\:click*="Save"], [type="submit"], button.btn-primary'
+                );
                 if (btn) {
                     syncSummernoteToLivewire();
                 }
@@ -379,7 +416,7 @@
             }
 
             document.addEventListener('livewire:init', boot);
-            document.addEventListener('livewire:navigated', refreshSummernote);
+            document.addEventListener('livewire:navigated', scheduleRefresh);
         })();
     </script>
 </body>

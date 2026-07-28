@@ -176,7 +176,7 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Caption</label>
-                                <textarea class="form-control" rows="2" wire:model="caption"></textarea>
+                                <textarea class="form-control summernote" rows="2" wire:model="caption" data-summernote-height="160"></textarea>
                             </div>
                             <div class="row g-2">
                                 <div class="col-md-4">
