@@ -5,6 +5,7 @@ namespace App\Livewire\Admin;
 use App\Models\PageHeader;
 use App\Models\WebsiteSetting;
 use App\Models\User;
+use App\Support\SiteFonts;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Component;
@@ -305,7 +306,16 @@ class Settings extends Component
             'registration_academic_year' => ['nullable', 'string', 'max:60'],
             'registration_message' => ['nullable', 'string'],
             'site_font_family' => ['nullable', 'string', 'max:255'],
-            'site_font_css_url' => ['nullable', 'string', 'max:500'],
+            'site_font_css_url' => [
+                'nullable',
+                'string',
+                'max:500',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if ($value && ! SiteFonts::isAllowedGoogleFontsUrl((string) $value)) {
+                        $fail('Please paste a valid Google Fonts CSS URL (fonts.googleapis.com).');
+                    }
+                },
+            ],
             'facebook_url' => ['nullable', 'url'],
             'instagram_url' => ['nullable', 'url'],
             'linkedin_url' => ['nullable', 'url'],
@@ -336,8 +346,8 @@ class Settings extends Component
             'core_values' => $this->core_values,
             'registration_academic_year' => $this->registration_academic_year,
             'registration_message' => $this->registration_message,
-            'site_font_family' => $this->site_font_family,
-            'site_font_css_url' => $this->site_font_css_url,
+            'site_font_family' => $this->site_font_family ?: null,
+            'site_font_css_url' => $this->normalizeFontCssUrl(),
             'facebook_url' => $this->facebook_url,
             'instagram_url' => $this->instagram_url,
             'linkedin_url' => $this->linkedin_url,
@@ -434,6 +444,55 @@ class Settings extends Component
         ]);
     }
 
+    public function updatedSiteFontFamily(?string $value): void
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            $this->site_font_css_url = null;
+
+            return;
+        }
+
+        if (array_key_exists($value, SiteFonts::catalog())) {
+            $this->site_font_css_url = SiteFonts::cssUrlFor($value);
+        }
+    }
+
+    public function updatedSiteFontCssUrl(?string $value): void
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return;
+        }
+
+        if (! SiteFonts::isAllowedGoogleFontsUrl($value)) {
+            return;
+        }
+
+        $fromUrl = SiteFonts::familyFromCssUrl($value);
+        if ($fromUrl) {
+            $this->site_font_family = array_key_exists($fromUrl, SiteFonts::catalog())
+                ? $fromUrl
+                : $fromUrl;
+        }
+    }
+
+    protected function normalizeFontCssUrl(): ?string
+    {
+        $url = trim((string) $this->site_font_css_url);
+        $family = trim((string) $this->site_font_family);
+
+        if ($url !== '' && SiteFonts::isAllowedGoogleFontsUrl($url)) {
+            return $url;
+        }
+
+        if ($family !== '' && array_key_exists($family, SiteFonts::catalog())) {
+            return SiteFonts::cssUrlFor($family);
+        }
+
+        return null;
+    }
+
     public function addAboutValueCard(): void
     {
         $this->about_value_cards[] = ['name' => '', 'description' => ''];
@@ -460,6 +519,11 @@ class Settings extends Component
 
     public function render()
     {
-        return view('livewire.admin.settings');
+        $preview = SiteFonts::resolve($this->site_font_family, $this->site_font_css_url);
+
+        return view('livewire.admin.settings', [
+            'googleFonts' => SiteFonts::catalog(),
+            'fontPreview' => $preview,
+        ]);
     }
 }

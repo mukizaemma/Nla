@@ -344,32 +344,27 @@
                             </div>
 
                             <hr class="my-4">
-                            <h6 class="mb-3"><i class="fa fa-font me-2 text-primary"></i>Site Typography</h6>
+                            <h6 class="mb-3"><i class="fa fa-font me-2 text-primary"></i>Site Typography (Google Fonts)</h6>
                             <p class="text-muted small mb-3">
-                                Choose the main font for the public website. This updates headings, paragraphs and menus so the school site feels more playful and engaging for children and parents.
+                                Choose a Google Font for the public website. It applies to body text, headings, navigation, buttons, and forms across all pages.
                             </p>
-                            <div class="row mb-4">
+                            <div class="row mb-3">
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">Primary Site Font (Google Font)</label>
+                                    <label class="form-label">Google Font</label>
                                     <select
                                         class="form-select @error('site_font_family') is-invalid @enderror"
-                                        wire:model.defer="site_font_family"
+                                        wire:model.live="site_font_family"
                                     >
-                                        <option value="">Default – Poppins</option>
-                                        <option value="Poppins">Poppins (clean, modern)</option>
-                                        <option value="Baloo 2">Baloo 2 (playful, rounded)</option>
-                                        <option value="Fredoka">Fredoka (friendly, bold)</option>
-                                        <option value="Quicksand">Quicksand (soft, rounded)</option>
-                                        <option value="Nunito">Nunito (simple, kid‑friendly)</option>
-                                        <option value="Comic Neue">Comic Neue (handwritten style)</option>
-                                        <option value="Montserrat">Montserrat (strong headings)</option>
-                                        <option value="Open Sans">Open Sans (classic web font)</option>
+                                        <option value="">Default – Source Sans 3</option>
+                                        @foreach($googleFonts as $family => $meta)
+                                            <option value="{{ $family }}">{{ $meta['label'] }}</option>
+                                        @endforeach
                                     </select>
                                     @error('site_font_family')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                     <small class="text-muted d-block mt-1">
-                                        Fonts are loaded from Google Fonts and applied across all public pages.
+                                        Selecting a font auto-fills the Google Fonts CSS URL below.
                                     </small>
                                 </div>
                                 <div class="col-md-6 mb-3">
@@ -377,15 +372,34 @@
                                     <input
                                         type="url"
                                         class="form-control @error('site_font_css_url') is-invalid @enderror"
-                                        wire:model.defer="site_font_css_url"
-                                        placeholder="https://fonts.googleapis.com/css2?family=Your+Font:wght@400;600&display=swap"
+                                        wire:model.live.debounce.400ms="site_font_css_url"
+                                        placeholder="https://fonts.googleapis.com/css2?family=Your+Font:wght@400;600;700&display=swap"
                                     >
                                     @error('site_font_css_url')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                     <small class="text-muted d-block mt-1">
-                                        Paste a full Google Fonts CSS link if you want a font that is not listed above.
+                                        Paste any Google Fonts CSS link from
+                                        <a href="https://fonts.google.com" target="_blank" rel="noopener">fonts.google.com</a>
+                                        if the font is not in the list.
                                     </small>
+                                </div>
+                            </div>
+                            <div class="card border mb-4">
+                                <div class="card-body">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                        <strong>Preview</strong>
+                                        <span class="small text-muted">{{ $fontPreview['family'] }}</span>
+                                    </div>
+                                    @if(! empty($fontPreview['href']))
+                                        <link rel="stylesheet" href="{{ $fontPreview['href'] }}">
+                                    @endif
+                                    <p class="mb-1" style="font-family: '{{ $fontPreview['family'] }}', system-ui, sans-serif; font-size: 1.35rem; font-weight: 700;">
+                                        Grade 5, 6 &amp; 7 Programs
+                                    </p>
+                                    <p class="mb-0 text-muted" style="font-family: '{{ $fontPreview['family'] }}', system-ui, sans-serif;">
+                                        Middle-school ACE learning paths designed for adolescents ready to lead — academically, spiritually, and socially.
+                                    </p>
                                 </div>
                             </div>
 

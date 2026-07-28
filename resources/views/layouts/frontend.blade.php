@@ -7,12 +7,50 @@
     <meta name="description" content="{{ (($websiteSettings ?? null)?->company_name ?? config('app.name')) . ' — ' . (($siteContent ?? [])['global']['meta_description'] ?? '') }}">
     <title>@yield('title', ($websiteSettings ?? null)?->company_name ?? config('app.name'))</title>
 
+    @php
+        $siteFont = \App\Support\SiteFonts::resolve(
+            ($websiteSettings ?? null)?->site_font_family,
+            ($websiteSettings ?? null)?->site_font_css_url
+        );
+    @endphp
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ $siteFont['href'] }}" rel="stylesheet">
+    {{-- Keep Playfair as optional heading companion only when using the default body font --}}
+    @if(($siteFont['family'] ?? '') === 'Source Sans 3' && empty(($websiteSettings ?? null)?->site_font_family) && empty(($websiteSettings ?? null)?->site_font_css_url))
+        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    @endif
 
     <link href="{{ asset('css/frontend.css') }}?v={{ file_exists(public_path('css/frontend.css')) ? filemtime(public_path('css/frontend.css')) : 1 }}" rel="stylesheet">
     <link href="{{ asset('css/pages.css') }}?v={{ file_exists(public_path('css/pages.css')) ? filemtime(public_path('css/pages.css')) : 1 }}" rel="stylesheet">
+    <style>
+        :root {
+            --font-site: '{{ $siteFont['family'] }}', system-ui, -apple-system, sans-serif;
+            --sans: var(--font-site);
+            @if(! empty(($websiteSettings ?? null)?->site_font_family) || ! empty(($websiteSettings ?? null)?->site_font_css_url))
+                --serif: var(--font-site);
+            @endif
+        }
+        body,
+        .btn,
+        .nav-link,
+        .nav-dropdown__toggle,
+        .form-control,
+        .section-heading,
+        .navbar-brand__subtitle {
+            font-family: var(--font-site);
+        }
+        @if(! empty(($websiteSettings ?? null)?->site_font_family) || ! empty(($websiteSettings ?? null)?->site_font_css_url))
+            h1, h2, h3, h4,
+            .section-title,
+            .navbar-brand__title,
+            .footer__brand-name,
+            .locator-title {
+                font-family: var(--font-site);
+            }
+        @endif
+    </style>
     @stack('styles')
     @livewireStyles
 </head>

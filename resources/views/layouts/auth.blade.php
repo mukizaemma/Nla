@@ -7,9 +7,12 @@
     @php
         $authSettings = \App\Models\WebsiteSetting::first();
         $schoolName = $authSettings->company_name ?? config('app.name');
-        $fontFamily = $authSettings->site_font_family ?? 'Poppins';
-        $fontSlug = str_replace(' ', '+', $fontFamily);
-        $fontHref = $authSettings->site_font_css_url ?? "https://fonts.googleapis.com/css2?family={$fontSlug}:wght@400;500;600;700&display=swap";
+        $siteFont = \App\Support\SiteFonts::resolve(
+            $authSettings->site_font_family ?? null,
+            $authSettings->site_font_css_url ?? null
+        );
+        $fontFamily = $siteFont['family'];
+        $fontHref = $siteFont['href'];
         $heroImage = $authSettings->home_background_image_path ?? $authSettings->cta_background_image_path ?? null;
     @endphp
     <title>{{ $title ?? 'Account' }} — {{ $schoolName }}</title>
@@ -18,6 +21,13 @@
     <link href="{{ $fontHref }}" rel="stylesheet">
     <link href="{{ asset('css/frontend.css') }}?v={{ file_exists(public_path('css/frontend.css')) ? filemtime(public_path('css/frontend.css')) : 1 }}" rel="stylesheet">
     <link href="{{ asset('css/auth.css') }}?v={{ file_exists(public_path('css/auth.css')) ? filemtime(public_path('css/auth.css')) : 1 }}" rel="stylesheet">
+    <style>
+        :root {
+            --font-site: '{{ $fontFamily }}', system-ui, sans-serif;
+            --sans: var(--font-site);
+            --serif: var(--font-site);
+        }
+    </style>
     @livewireStyles
 </head>
 <body class="auth-body" style="font-family: '{{ $fontFamily }}', system-ui, sans-serif;">
