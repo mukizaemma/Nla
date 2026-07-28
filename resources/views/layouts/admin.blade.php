@@ -96,9 +96,6 @@
                     <a href="{{ route('admin.school-activities.index') }}" class="nav-item nav-link {{ request()->routeIs('admin.school-activities.*') ? 'active' : '' }}">
                         <i class="fa fa-newspaper me-2"></i>School Activities
                     </a>
-                    <a href="{{ route('admin.services.index') }}" class="nav-item nav-link {{ request()->routeIs('admin.services.*') ? 'active' : '' }}">
-                        <i class="fa fa-chalkboard-teacher me-2"></i>Services
-                    </a>
                     <a href="{{ route('admin.staff.index') }}" class="nav-item nav-link {{ request()->routeIs('admin.staff.*') ? 'active' : '' }}">
                         <i class="fa fa-users me-2"></i>Staff
                     </a>
@@ -107,6 +104,9 @@
                     </a>
                     <a href="{{ route('admin.contact-messages.index') }}" class="nav-item nav-link {{ request()->routeIs('admin.contact-messages.*') ? 'active' : '' }}">
                         <i class="fa fa-envelope me-2"></i>Contact Messages
+                    </a>
+                    <a href="{{ route('admin.feedback.index') }}" class="nav-item nav-link {{ request()->routeIs('admin.feedback.*') ? 'active' : '' }}">
+                        <i class="fa fa-star me-2"></i>Feedback
                     </a>
                     <a href="{{ route('admin.registrations.index') }}" class="nav-item nav-link {{ request()->routeIs('admin.registrations.*') ? 'active' : '' }}">
                         <i class="fa fa-user-graduate me-2"></i>Registrations

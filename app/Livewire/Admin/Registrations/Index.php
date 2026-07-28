@@ -5,11 +5,14 @@ namespace App\Livewire\Admin\Registrations;
 use App\Mail\StudentRegistrationDecision;
 use App\Models\StudentRegistration;
 use App\Models\WebsiteSetting;
+use App\Support\StudentRegistrationExporter;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -22,11 +25,29 @@ class Index extends Component
 
     public string $statusFilter = 'all';
 
+    #[Url(as: 'from', keep: true)]
+    public ?string $dateFrom = null;
+
+    #[Url(as: 'to', keep: true)]
+    public ?string $dateTo = null;
+
     public ?int $selectedId = null;
 
     public string $editChannel = 'email';
 
     public string $responseMessage = '';
+
+    public ?int $deletingId = null;
+
+    public string $deletionReason = '';
+
+    public function mount(): void
+    {
+        $open = request()->query('open');
+        if ($open && is_numeric($open)) {
+            $this->openRegistration((int) $open);
+        }
+    }
 
     public function updatingSearch(): void
     {
@@ -34,6 +55,16 @@ class Index extends Component
     }
 
     public function updatingStatusFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingDateFrom(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingDateTo(): void
     {
         $this->resetPage();
     }
@@ -123,7 +154,6 @@ class Index extends Component
             return;
         }
 
-        // Persist any channel change before sending.
         $registration->submission_channel = $this->editChannel;
         $registration->status = $status;
         $registration->admin_response_message = trim($this->responseMessage);
@@ -192,21 +222,114 @@ class Index extends Component
         $this->closeRegistration();
     }
 
-    protected function selectedRegistration(): ?StudentRegistration
+    public function confirmDelete(int $id): void
     {
-        if (! $this->selectedId) {
-            return null;
-        }
-
-        return StudentRegistration::find($this->selectedId);
+        StudentRegistration::findOrFail($id);
+        $this->deletingId = $id;
+        $this->deletionReason = '';
+        $this->resetErrorBag('deletionReason');
     }
 
-    public function render()
+    public function cancelDelete(): void
     {
-        $query = StudentRegistration::query()->orderByDesc('created_at');
+        $this->deletingId = null;
+        $this->deletionReason = '';
+        $this->resetErrorBag('deletionReason');
+    }
+
+    public function deleteRegistration(): void
+    {
+        if (! $this->deletingId) {
+            return;
+        }
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $registration = StudentRegistration::findOrFail($this->deletingId);
+
+        if ($user->isSuperAdmin()) {
+            $registration->deleted_by = $user->id;
+            $registration->deletion_reason = trim($this->deletionReason) !== ''
+                ? trim($this->deletionReason)
+                : 'Deleted by super admin';
+            $registration->save();
+            $registration->delete();
+        } else {
+            $this->validate([
+                'deletionReason' => ['required', 'string', 'min:5', 'max:1000'],
+            ], [
+                'deletionReason.required' => 'Please explain why this registration is being removed (e.g. duplicate or not real).',
+                'deletionReason.min' => 'Please provide a short reason (at least 5 characters).',
+            ]);
+
+            $registration->deleted_by = $user->id;
+            $registration->deletion_reason = trim($this->deletionReason);
+            $registration->save();
+            $registration->delete();
+        }
+
+        if ($this->selectedId === $this->deletingId) {
+            $this->closeRegistration();
+        }
+
+        $this->cancelDelete();
+
+        $this->dispatch('swal', [
+            'icon' => 'success',
+            'title' => 'Registration removed',
+            'text' => 'The registration has been deleted from the active list.',
+        ]);
+    }
+
+    public function exportExcel()
+    {
+        $this->validateDateRange();
+
+        return StudentRegistrationExporter::excel(
+            StudentRegistrationExporter::collect($this->filteredQuery()),
+            $this->dateFrom,
+            $this->dateTo
+        );
+    }
+
+    public function exportPdf()
+    {
+        $this->validateDateRange();
+
+        return StudentRegistrationExporter::pdf(
+            StudentRegistrationExporter::collect($this->filteredQuery()),
+            $this->dateFrom,
+            $this->dateTo
+        );
+    }
+
+    protected function validateDateRange(): void
+    {
+        $this->validate([
+            'dateFrom' => ['nullable', 'date'],
+            'dateTo' => ['nullable', 'date', 'after_or_equal:dateFrom'],
+        ], [
+            'dateTo.after_or_equal' => 'The end date must be on or after the start date.',
+        ]);
+    }
+
+    /**
+     * @return Builder<StudentRegistration>
+     */
+    protected function filteredQuery(): Builder
+    {
+        $query = StudentRegistration::query();
 
         if ($this->statusFilter !== 'all') {
             $query->where('status', $this->statusFilter);
+        }
+
+        if ($this->dateFrom) {
+            $query->whereDate('created_at', '>=', $this->dateFrom);
+        }
+
+        if ($this->dateTo) {
+            $query->whereDate('created_at', '<=', $this->dateTo);
         }
 
         if ($this->search !== '') {
@@ -228,9 +351,32 @@ class Index extends Component
             });
         }
 
+        return $query;
+    }
+
+    protected function selectedRegistration(): ?StudentRegistration
+    {
+        if (! $this->selectedId) {
+            return null;
+        }
+
+        return StudentRegistration::find($this->selectedId);
+    }
+
+    public function getIsSuperAdminProperty(): bool
+    {
+        return Auth::user()?->isSuperAdmin() ?? false;
+    }
+
+    public function render()
+    {
         return view('livewire.admin.registrations.index', [
-            'registrations' => $query->paginate(15),
+            'registrations' => $this->filteredQuery()->orderByDesc('created_at')->paginate(15),
             'selected' => $this->selectedRegistration(),
+            'deleting' => $this->deletingId
+                ? StudentRegistration::find($this->deletingId)
+                : null,
+            'isSuperAdmin' => $this->isSuperAdmin,
         ]);
     }
 }

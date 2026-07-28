@@ -1,9 +1,9 @@
-@section('title', 'Customer Feedback')
+@section('title', 'Feedback')
 
 <div>
     <div class="bg-light rounded p-4">
         <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
-            <h4 class="mb-2">Customer Feedback & Ratings</h4>
+            <h4 class="mb-2">Feedback & Ratings</h4>
 
             <div class="d-flex flex-wrap gap-2">
                 <input
@@ -19,7 +19,6 @@
                     <option value="overall">Overall</option>
                     <option value="department">Department</option>
                     <option value="service">Service</option>
-                    <option value="restaurant">Restaurant</option>
                     <option value="facility">Facility</option>
                     <option value="staff">Staff</option>
                     <option value="other">Other</option>

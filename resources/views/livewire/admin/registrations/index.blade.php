@@ -4,7 +4,22 @@
             <h4 class="mb-0">
                 <i class="fa fa-user-graduate me-2 text-primary"></i>Student Registrations
             </h4>
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <input
+                    type="date"
+                    class="form-control form-control-sm"
+                    wire:model.live="dateFrom"
+                    title="From date"
+                    style="min-width: 145px;"
+                >
+                <span class="text-muted small">to</span>
+                <input
+                    type="date"
+                    class="form-control form-control-sm"
+                    wire:model.live="dateTo"
+                    title="To date"
+                    style="min-width: 145px;"
+                >
                 <select class="form-select form-select-sm" wire:model.live="statusFilter" style="min-width: 140px;">
                     <option value="all">All statuses</option>
                     <option value="pending">Pending</option>
@@ -16,16 +31,37 @@
                     class="form-control form-control-sm"
                     placeholder="Search student, parent, email, phone..."
                     wire:model.live.debounce.300ms="search"
-                    style="min-width: 260px;"
+                    style="min-width: 220px;"
                 >
+                <button
+                    type="button"
+                    class="btn btn-sm btn-success"
+                    wire:click="exportExcel"
+                    wire:loading.attr="disabled"
+                    title="Export filtered list to Excel"
+                >
+                    <i class="fa fa-file-excel me-1"></i>Excel
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-danger"
+                    wire:click="exportPdf"
+                    wire:loading.attr="disabled"
+                    title="Export filtered list to PDF"
+                >
+                    <i class="fa fa-file-pdf me-1"></i>PDF
+                </button>
             </div>
         </div>
+
+        @error('dateFrom') <div class="alert alert-warning py-2">{{ $message }}</div> @enderror
+        @error('dateTo') <div class="alert alert-warning py-2">{{ $message }}</div> @enderror
 
         <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
                 @if($registrations->isEmpty())
                     <div class="p-4 text-center text-muted">
-                        @if($search || $statusFilter !== 'all')
+                        @if($search || $statusFilter !== 'all' || $dateFrom || $dateTo)
                             No registrations match your filters.
                         @else
                             No student registrations yet.
@@ -42,7 +78,7 @@
                                     <th>Channel</th>
                                     <th>Status</th>
                                     <th>Submitted</th>
-                                    <th style="width: 90px;"></th>
+                                    <th style="width: 150px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -87,13 +123,21 @@
                                             @endif
                                         </td>
                                         <td class="small text-muted">{{ $reg->created_at->format('M d, Y H:i') }}</td>
-                                        <td>
+                                        <td class="text-nowrap">
                                             <button
                                                 type="button"
                                                 class="btn btn-sm btn-outline-primary"
                                                 wire:click="openRegistration({{ $reg->id }})"
                                             >
                                                 View
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="btn btn-sm btn-outline-danger"
+                                                wire:click="confirmDelete({{ $reg->id }})"
+                                                title="Delete registration"
+                                            >
+                                                <i class="fa fa-trash"></i>
                                             </button>
                                         </td>
                                     </tr>
@@ -210,7 +254,16 @@
                         <p class="small text-muted mt-3 mb-0">Submitted {{ $selected->created_at->format('F j, Y \a\t g:i A') }}</p>
                     </div>
                     <div class="modal-footer justify-content-between">
-                        <button type="button" class="btn btn-light" wire:click="closeRegistration">Close</button>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-light" wire:click="closeRegistration">Close</button>
+                            <button
+                                type="button"
+                                class="btn btn-outline-danger"
+                                wire:click="confirmDelete({{ $selected->id }})"
+                            >
+                                <i class="fa fa-trash me-1"></i>Delete
+                            </button>
+                        </div>
                         @if($selected->isPending())
                             <div class="d-flex gap-2">
                                 <button
@@ -231,6 +284,65 @@
                                 </button>
                             </div>
                         @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if($deleting)
+        <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,.55); z-index: 1060;" wire:keydown.escape.window="cancelDelete">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Delete registration</h5>
+                        <button type="button" class="btn-close" wire:click="cancelDelete"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-2">
+                            Remove <strong>{{ $deleting->student_full_name }}</strong>
+                            @if($deleting->academic_level)
+                                ({{ $deleting->academic_level }})
+                            @endif
+                            from the active list?
+                        </p>
+                        @if($isSuperAdmin)
+                            <p class="small text-muted mb-3">
+                                As super admin you can delete immediately. An optional note is stored for the audit trail.
+                            </p>
+                            <label class="form-label">Reason <span class="text-muted">(optional)</span></label>
+                            <textarea
+                                class="form-control @error('deletionReason') is-invalid @enderror"
+                                rows="3"
+                                wire:model="deletionReason"
+                                placeholder="e.g. Duplicate submission, test entry…"
+                            ></textarea>
+                        @else
+                            <p class="small text-muted mb-3">
+                                Please explain why this registration is not real or is a duplicate. This reason is saved with your account.
+                            </p>
+                            <label class="form-label">Reason <span class="text-danger">*</span></label>
+                            <textarea
+                                class="form-control @error('deletionReason') is-invalid @enderror"
+                                rows="3"
+                                wire:model="deletionReason"
+                                placeholder="e.g. Duplicate of registration #12 / spam / test entry"
+                            ></textarea>
+                        @endif
+                        @error('deletionReason')
+                            <div class="invalid-feedback d-block">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" wire:click="cancelDelete">Cancel</button>
+                        <button
+                            type="button"
+                            class="btn btn-danger"
+                            wire:click="deleteRegistration"
+                            wire:loading.attr="disabled"
+                        >
+                            {{ $isSuperAdmin ? 'Delete now' : 'Delete with reason' }}
+                        </button>
                     </div>
                 </div>
             </div>

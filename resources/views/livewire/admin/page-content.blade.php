@@ -16,10 +16,10 @@
         @if (session()->has('message'))
             <div class="alert alert-success">{{ session('message') }}</div>
         @endif
-        <p class="text-muted small">Edit headings, intros, core values, and page headers. Lists (programs, staff, gallery, partners) stay in their own admin menus.</p>
+        <p class="text-muted small">Edit headings, intros, and core values. Page headers are managed in Settings → School Info. Lists (programs, staff, gallery, partners) stay in their own admin menus.</p>
 
         <ul class="nav nav-pills flex-wrap gap-1 mb-4">
-            @foreach(['global' => 'Global', 'home' => 'Home', 'about' => 'About', 'headers' => 'Page Headers', 'facilities' => 'Facilities', 'contact' => 'Contact', 'departments' => 'Academics', 'activities' => 'Activities', 'gallery' => 'Gallery', 'careers' => 'Careers', 'leadership' => 'Staff page', 'feedback' => 'Feedback', 'registration' => 'Register'] as $key => $label)
+            @foreach(['global' => 'Global', 'home' => 'Home', 'about' => 'About', 'facilities' => 'Facilities', 'contact' => 'Contact', 'departments' => 'Academics', 'activities' => 'Activities', 'gallery' => 'Gallery', 'careers' => 'Careers', 'leadership' => 'Staff page', 'feedback' => 'Feedback', 'registration' => 'Register'] as $key => $label)
                 <li class="nav-item">
                     <button type="button" class="nav-link {{ $activeTab === $key ? 'active' : '' }}" wire:click="setTab('{{ $key }}')">{{ $label }}</button>
                 </li>
@@ -164,32 +164,6 @@
                             </div>
                             <input type="text" class="form-control form-control-sm mb-1" wire:model.defer="sections.about.core_value_cards.{{ $idx }}.name" placeholder="Name">
                             <textarea class="form-control form-control-sm summernote" rows="2" data-summernote-height="140" wire:model.defer="sections.about.core_value_cards.{{ $idx }}.description" placeholder="Description"></textarea>
-                        </div>
-                    @endforeach
-                </div></div>
-            @endif
-
-            @if($activeTab === 'headers')
-                <div class="card border-0 shadow-sm mb-3"><div class="card-body">
-                    <p class="text-muted small">Edit page hero titles and captions. Header background images can still be uploaded in Settings → Page Headers.</p>
-                    @foreach($headers as $index => $header)
-                        <div class="border rounded p-3 mb-3" wire:key="header-{{ $header['key'] }}">
-                            <div class="fw-semibold mb-2">{{ $header['label'] }} <span class="text-muted small">({{ $header['key'] }})</span></div>
-                            <div class="row g-2">
-                                <div class="col-md-5">
-                                    <label class="form-label small text-muted">Title</label>
-                                    <input type="text" class="form-control form-control-sm" wire:model.defer="headers.{{ $index }}.title">
-                                </div>
-                                <div class="col-md-7">
-                                    <label class="form-label small text-muted">Caption</label>
-                                    <input type="text" class="form-control form-control-sm" wire:model.defer="headers.{{ $index }}.caption">
-                                </div>
-                            </div>
-                            @if(!empty($header['image_path']))
-                                <div class="mt-2">
-                                    <img src="{{ asset($header['image_path']) }}" alt="" class="img-fluid rounded border" style="max-height: 64px;">
-                                </div>
-                            @endif
                         </div>
                     @endforeach
                 </div></div>

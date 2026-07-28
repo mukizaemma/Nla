@@ -3,16 +3,16 @@
 <div class="content page-wrap">
     <div class="contact-page">
         {{-- Contact info header --}}
-        @if($settings && ($settings->address || $settings->phone_reception || $settings->phone_urgency || $settings->email))
+        @if($settings && (\App\Support\SiteContent::hasRichTextContent($settings->address) || $settings->phone_reception || $settings->phone_urgency || $settings->email))
             <div class="contact-info-header">
-                @if($settings->address)
+                @if(\App\Support\SiteContent::hasRichTextContent($settings->address))
                     <div class="contact-info-item">
                         <span class="contact-icon" aria-hidden="true">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                         </span>
                         <div>
                             <span class="contact-label">ADDRESS</span>
-                            <span class="contact-value">{{ $settings->address }}</span>
+                            <span class="contact-value">{!! $settings->address !!}</span>
                         </div>
                     </div>
                 @endif

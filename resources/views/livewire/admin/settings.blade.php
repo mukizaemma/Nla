@@ -28,16 +28,6 @@
             </li>
             <li class="nav-item" role="presentation">
                 <button
-                    class="nav-link {{ $activeTab === 'headers' ? 'active' : '' }}"
-                    wire:click="setTab('headers')"
-                    type="button"
-                    role="tab"
-                >
-                    <i class="fa fa-image me-2"></i>Page Headers
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button
                     class="nav-link {{ $activeTab === 'account' ? 'active' : '' }}"
                     wire:click="setTab('account')"
                     type="button"
@@ -178,7 +168,7 @@
 
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">Urgency / Emergency Phone</label>
+                                    <label class="form-label">Secondary / Emergency Contact</label>
                                     <input
                                         type="text"
                                         class="form-control @error('phone_urgency') is-invalid @enderror"
@@ -196,31 +186,6 @@
                                         wire:model.defer="phone_whatsapp"
                                     >
                                     @error('phone_whatsapp')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Billing Phone</label>
-                                    <input
-                                        type="text"
-                                        class="form-control @error('phone_billing') is-invalid @enderror"
-                                        wire:model.defer="phone_billing"
-                                    >
-                                    @error('phone_billing')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label">Restaurant Phone</label>
-                                    <input
-                                        type="text"
-                                        class="form-control @error('phone_restaurant') is-invalid @enderror"
-                                        wire:model.defer="phone_restaurant"
-                                    >
-                                    @error('phone_restaurant')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>
@@ -401,40 +366,6 @@
                                         placeholder="Short message inviting parents to register for the new academic year."
                                     ></textarea>
                                     @error('registration_message')
-                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-
-                            <hr class="my-4">
-                            <h6 class="mb-3"><i class="fa fa-bullhorn me-2 text-primary"></i>Home Page CTA Section</h6>
-                            <p class="text-muted small mb-3">The call-to-action block on the home page with parallax background. Single title and centered text.</p>
-                            <div class="row">
-                                <div class="col-12 mb-3">
-                                    <livewire:admin.shared.image-field
-                                        wire:model="cta_background_image_path"
-                                        folder="cta"
-                                        label="CTA Background Image"
-                                        source="settings"
-                                        :key="'settings-cta'"
-                                    />
-                                </div>
-                                <div class="col-12 mb-3">
-                                    <label class="form-label">CTA Title (single title)</label>
-                                    <input type="text" class="form-control @error('cta_title') is-invalid @enderror"
-                                           wire:model.defer="cta_title"
-                                           placeholder="e.g. Need Emergency Contact? We're Here 24/7">
-                                    @error('cta_title') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                                </div>
-                                <div class="col-12 mb-3">
-                                    <label class="form-label">CTA Description</label>
-                                    <textarea
-                                        class="form-control summernote @error('cta_description') is-invalid @enderror"
-                                        wire:model.defer="cta_description"
-                                        rows="3"
-                                        placeholder="For urgent healthcare needs, our Emergency Contact Information is readily available..."
-                                    ></textarea>
-                                    @error('cta_description')
                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                     @enderror
                                 </div>
@@ -674,8 +605,8 @@
                 </div>
             </div>
 
-            <!-- Page Headers Tab -->
-            <div class="tab-pane fade {{ $activeTab === 'headers' ? 'show active' : '' }}" role="tabpanel">
+            <!-- Page Headers (managed with School Info) -->
+            <div class="tab-pane fade {{ $activeTab === 'info' ? 'show active' : '' }}" role="tabpanel">
                 <div class="card border-0 shadow-sm">
                     <div class="card-body">
                         <div class="d-flex align-items-center justify-content-between mb-3">

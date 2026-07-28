@@ -212,10 +212,10 @@
                 <div class="footer__col footer__col--contact">
                     <h3 class="footer__heading">Get in touch</h3>
                     <div class="footer__contacts">
-                        @if($websiteSettings->address ?? null)
+                        @if(\App\Support\SiteContent::hasRichTextContent($websiteSettings->address ?? null))
                             <div class="footer__contact-item">
                                 <svg class="footer__contact-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                                <span>{{ $websiteSettings->address }}</span>
+                                <span>{!! $websiteSettings->address !!}</span>
                             </div>
                         @endif
                         @if($phone)

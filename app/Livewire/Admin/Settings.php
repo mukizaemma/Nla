@@ -35,8 +35,6 @@ class Settings extends Component
     public ?string $phone_reception = null;
     public ?string $phone_urgency = null;
     public ?string $phone_whatsapp = null;
-    public ?string $phone_billing = null;
-    public ?string $phone_restaurant = null;
     public ?string $address = null;
     public ?string $map_embed_url = null;
 
@@ -63,17 +61,13 @@ class Settings extends Component
     public ?string $threads_url = null;
     public ?string $logo_path = null;
     public ?string $home_background_image_path = null;
-    public ?string $cta_background_image_path = null;
-    public ?string $cta_title = null;
-    public ?string $cta_description = null;
     public ?string $gallery_external_url = null;
 
     /**
-     * Temporary uploaded files for logo, home background, and CTA background.
+     * Temporary uploaded files for logo and home background.
      */
     public $logo;
     public $home_background_image;
-    public $cta_background_image;
 
     /**
      * Temporary uploaded header images indexed by headers array key.
@@ -89,7 +83,7 @@ class Settings extends Component
      */
     public array $headerRemoveImage = [];
 
-    // Page headers tab
+    // Page headers are managed under School Info.
     /**
      * @var array<int, array<string, mixed>>
      */
@@ -120,7 +114,7 @@ class Settings extends Component
     public function mount()
     {
         // Validate tab parameter
-        $validTabs = ['contacts', 'info', 'headers', 'account'];
+        $validTabs = ['contacts', 'info', 'account'];
         if (!in_array($this->activeTab, $validTabs)) {
             $this->activeTab = 'contacts';
         }
@@ -132,7 +126,7 @@ class Settings extends Component
 
     public function setTab(string $tab): void
     {
-        $validTabs = ['contacts', 'info', 'headers', 'account'];
+        $validTabs = ['contacts', 'info', 'account'];
         if (in_array($tab, $validTabs)) {
             $this->activeTab = $tab;
         }
@@ -162,8 +156,6 @@ class Settings extends Component
         $this->phone_reception = $settings->phone_reception;
         $this->phone_urgency = $settings->phone_urgency;
         $this->phone_whatsapp = $settings->phone_whatsapp;
-        $this->phone_billing = $settings->phone_billing;
-        $this->phone_restaurant = $settings->phone_restaurant;
         $this->address = $settings->address;
         $this->map_embed_url = $settings->map_embed_url;
 
@@ -196,9 +188,6 @@ class Settings extends Component
         $this->threads_url = $settings->threads_url;
         $this->logo_path = $settings->logo_path;
         $this->home_background_image_path = $settings->home_background_image_path;
-        $this->cta_background_image_path = $settings->cta_background_image_path;
-        $this->cta_title = $settings->cta_title;
-        $this->cta_description = $settings->cta_description;
         $this->gallery_external_url = $settings->gallery_external_url;
     }
 
@@ -268,8 +257,6 @@ class Settings extends Component
             'phone_reception' => ['nullable', 'string', 'max:50'],
             'phone_urgency' => ['nullable', 'string', 'max:50'],
             'phone_whatsapp' => ['nullable', 'string', 'max:50'],
-            'phone_billing' => ['nullable', 'string', 'max:50'],
-            'phone_restaurant' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string'],
             'map_embed_url' => ['nullable', 'string'],
         ]);
@@ -325,9 +312,6 @@ class Settings extends Component
             'threads_url' => ['nullable', 'url'],
             'logo_path' => ['nullable', 'string', 'max:500'],
             'home_background_image_path' => ['nullable', 'string', 'max:500'],
-            'cta_background_image_path' => ['nullable', 'string', 'max:500'],
-            'cta_title' => ['nullable', 'string', 'max:255'],
-            'cta_description' => ['nullable', 'string'],
             'gallery_external_url' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -358,9 +342,6 @@ class Settings extends Component
             'gallery_external_url' => $this->gallery_external_url,
             'logo_path' => $this->logo_path,
             'home_background_image_path' => $this->home_background_image_path,
-            'cta_background_image_path' => $this->cta_background_image_path,
-            'cta_title' => $this->cta_title,
-            'cta_description' => $this->cta_description,
         ]);
 
         $settings->save();
@@ -370,9 +351,6 @@ class Settings extends Component
         }
         if ($this->home_background_image_path) {
             AdminImageUploader::registerExisting($this->home_background_image_path, 'hero', 'settings');
-        }
-        if ($this->cta_background_image_path) {
-            AdminImageUploader::registerExisting($this->cta_background_image_path, 'cta', 'settings');
         }
 
         session()->flash('success', 'School information updated successfully.');

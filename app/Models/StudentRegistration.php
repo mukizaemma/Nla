@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class StudentRegistration extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     public const STATUS_PENDING = 'pending';
 
@@ -38,16 +40,24 @@ class StudentRegistration extends Model
         'guardian_phone',
         'previous_school_name',
         'previous_school_report_path',
+        'deleted_by',
+        'deletion_reason',
     ];
 
     protected $casts = [
         'date_of_birth' => 'date',
         'responded_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     public function responder(): BelongsTo
     {
         return $this->belongsTo(User::class, 'responded_by');
+    }
+
+    public function deletedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'deleted_by');
     }
 
     public function getStudentFullNameAttribute(): string

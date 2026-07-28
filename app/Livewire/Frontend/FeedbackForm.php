@@ -28,7 +28,7 @@ class FeedbackForm extends Component
             'phone' => ['nullable', 'string', 'max:50'],
             'message' => ['required', 'string', 'min:10'],
             'rating_out_of_10' => ['nullable', 'integer', 'min:1', 'max:10'],
-            'rating_category' => ['nullable', 'string', 'in:overall,department,service,restaurant,facility,staff,other'],
+            'rating_category' => ['nullable', 'string', 'in:overall,department,service,facility,staff,other'],
             'wants_response' => ['boolean'],
             'preferred_contact_method' => ['nullable', 'string', 'in:none,email,phone,either'],
         ];

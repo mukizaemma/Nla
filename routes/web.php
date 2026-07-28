@@ -78,9 +78,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // School activities (articles/blog)
         Route::get('/school-activities', \App\Livewire\Admin\SchoolActivities\Index::class)->name('school-activities.index');
 
-        // School services
-        Route::get('/services', \App\Livewire\Admin\Services\Index::class)->name('services.index');
-
         // Public-facing staff / leadership profiles
         Route::get('/staff', \App\Livewire\Admin\LeadershipTeam\Index::class)->name('staff.index');
 
@@ -89,6 +86,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Contact messages from website contact form
         Route::get('/contact-messages', \App\Livewire\Admin\ContactMessages\Index::class)->name('contact-messages.index');
+
+        // Public feedback submissions
+        Route::get('/feedback', \App\Livewire\Admin\Feedback\Index::class)->name('feedback.index');
 
         // Student registrations (from public registration form)
         Route::get('/registrations', \App\Livewire\Admin\Registrations\Index::class)->name('registrations.index');
