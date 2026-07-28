@@ -50,7 +50,12 @@ class ImageField extends Component
         }
 
         $this->validate([
-            'upload' => ['required', 'image', 'max:'.AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB],
+            'upload' => [
+                'required',
+                'image',
+                'mimes:jpg,jpeg,png,gif,webp,bmp',
+                'max:'.AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB,
+            ],
         ]);
 
         $preview = AdminImageUploader::preview($this->upload, $this->allowSmall);

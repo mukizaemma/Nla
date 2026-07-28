@@ -134,12 +134,19 @@ class AdminImageUploader
             ];
         }
 
-        $mime = (string) ($file->getMimeType() ?: '');
+        $path = $realPath ?: $file->getRealPath();
+        $mime = (string) ($file->getMimeType() ?: mime_content_type($path) ?: '');
         try {
-            $processed = self::processToMaxBytes($realPath ?: $file->getRealPath(), $mime, $originalBytes);
+            $processed = self::processToMaxBytes((string) $path, $mime, $originalBytes);
             $final = $processed['bytes'];
         } catch (\Throwable $e) {
-            $final = self::MAX_BYTES;
+            return [
+                'original_bytes' => $originalBytes,
+                'final_bytes' => $originalBytes,
+                'will_resize' => true,
+                'allowed' => false,
+                'message' => $e->getMessage(),
+            ];
         }
 
         return [
@@ -213,6 +220,8 @@ class AdminImageUploader
      */
     protected static function processToMaxBytes(string $realPath, string $mime, int $originalBytes): array
     {
+        self::raiseMemoryLimit();
+
         if ($originalBytes <= self::MAX_BYTES) {
             $binary = (string) file_get_contents($realPath);
             $info = @getimagesize($realPath);
@@ -229,20 +238,36 @@ class AdminImageUploader
 
         $image = self::loadGdImage($realPath, $mime);
         if (! $image) {
-            throw new RuntimeException('Unable to process this image. Try JPG or PNG.');
+            throw new RuntimeException(
+                'Unable to process this image. Use a standard JPG, PNG, WEBP, or GIF '
+                .'(HEIC/AVIF from some phones may need converting first).'
+            );
         }
 
         $width = imagesx($image);
         $height = imagesy($image);
+
+        // Cap starting dimensions so huge phone photos compress reliably.
+        $maxEdge = 1920;
         $scale = 1.0;
-        $quality = 85;
+        if (max($width, $height) > $maxEdge) {
+            $scale = $maxEdge / max($width, $height);
+        }
+
+        $quality = 82;
         $binary = '';
         $outMime = 'image/jpeg';
+        $newW = $width;
+        $newH = $height;
 
-        for ($attempt = 0; $attempt < 12; $attempt++) {
+        for ($attempt = 0; $attempt < 16; $attempt++) {
             $newW = max(1, (int) round($width * $scale));
             $newH = max(1, (int) round($height * $scale));
             $canvas = imagecreatetruecolor($newW, $newH);
+            if ($canvas === false) {
+                imagedestroy($image);
+                throw new RuntimeException('Unable to allocate image canvas. Try a smaller photo.');
+            }
             $white = imagecolorallocate($canvas, 255, 255, 255);
             imagefilledrectangle($canvas, 0, 0, $newW, $newH, $white);
             imagecopyresampled($canvas, $image, 0, 0, 0, 0, $newW, $newH, $width, $height);
@@ -268,8 +293,8 @@ class AdminImageUploader
             if ($quality > 55) {
                 $quality -= 8;
             } else {
-                $scale *= 0.85;
-                $quality = 80;
+                $scale *= 0.82;
+                $quality = 78;
             }
         }
 
@@ -283,27 +308,93 @@ class AdminImageUploader
             'binary' => $binary,
             'bytes' => strlen($binary),
             'mime' => $outMime,
-            'width' => max(1, (int) round($width * $scale)),
-            'height' => max(1, (int) round($height * $scale)),
+            'width' => $newW,
+            'height' => $newH,
             'was_resized' => true,
         ];
     }
 
-    /** @return \GdImage|resource|null */
-    protected static function loadGdImage(string $path, string $mime)
+    protected static function raiseMemoryLimit(): void
     {
-        $mime = strtolower($mime);
-        try {
-            return match (true) {
-                str_contains($mime, 'jpeg'), str_contains($mime, 'jpg') => @imagecreatefromjpeg($path),
-                str_contains($mime, 'png') => @imagecreatefrompng($path),
-                str_contains($mime, 'webp') && function_exists('imagecreatefromwebp') => @imagecreatefromwebp($path),
-                str_contains($mime, 'gif') => @imagecreatefromgif($path),
-                default => @imagecreatefromstring((string) file_get_contents($path)),
-            } ?: null;
-        } catch (\Throwable $e) {
+        $current = ini_get('memory_limit');
+        if ($current === false || $current === '' || $current === '-1') {
+            return;
+        }
+
+        $bytes = self::memoryLimitToBytes((string) $current);
+        $target = 256 * 1024 * 1024;
+        if ($bytes > 0 && $bytes < $target) {
+            @ini_set('memory_limit', '256M');
+        }
+    }
+
+    protected static function memoryLimitToBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '-1') {
+            return -1;
+        }
+
+        $unit = strtolower(substr($value, -1));
+        $number = (int) $value;
+
+        return match ($unit) {
+            'g' => $number * 1024 * 1024 * 1024,
+            'm' => $number * 1024 * 1024,
+            'k' => $number * 1024,
+            default => (int) $value,
+        };
+    }
+
+    /** @return \GdImage|resource|null */
+    protected static function loadGdImage(string $path, string $mime = '')
+    {
+        if (! is_readable($path)) {
             return null;
         }
+
+        $info = @getimagesize($path);
+        $detectedType = is_array($info) ? (int) ($info[2] ?? 0) : 0;
+        $detectedMime = is_array($info) ? strtolower((string) ($info['mime'] ?? '')) : '';
+        $mime = strtolower($mime ?: $detectedMime);
+
+        // Prefer real file-type detection over the uploaded MIME (browsers often lie).
+        $loaders = [];
+
+        if ($detectedType === IMAGETYPE_JPEG || str_contains($mime, 'jpeg') || str_contains($mime, 'jpg')) {
+            $loaders[] = static fn () => @imagecreatefromjpeg($path);
+        }
+        if ($detectedType === IMAGETYPE_PNG || str_contains($mime, 'png')) {
+            $loaders[] = static fn () => @imagecreatefrompng($path);
+        }
+        if (($detectedType === IMAGETYPE_WEBP || str_contains($mime, 'webp')) && function_exists('imagecreatefromwebp')) {
+            $loaders[] = static fn () => @imagecreatefromwebp($path);
+        }
+        if ($detectedType === IMAGETYPE_GIF || str_contains($mime, 'gif')) {
+            $loaders[] = static fn () => @imagecreatefromgif($path);
+        }
+        if (($detectedType === IMAGETYPE_BMP || str_contains($mime, 'bmp')) && function_exists('imagecreatefrombmp')) {
+            $loaders[] = static fn () => @imagecreatefrombmp($path);
+        }
+        if (function_exists('imagecreatefromavif') && (str_contains($mime, 'avif') || str_contains($detectedMime, 'avif'))) {
+            $loaders[] = static fn () => @imagecreatefromavif($path);
+        }
+
+        // Always finish with binary decode as a format-agnostic fallback.
+        $loaders[] = static fn () => @imagecreatefromstring((string) file_get_contents($path));
+
+        foreach ($loaders as $loader) {
+            try {
+                $image = $loader();
+                if ($image) {
+                    return $image;
+                }
+            } catch (\Throwable $e) {
+                // try next loader
+            }
+        }
+
+        return null;
     }
 
     protected static function extensionForMime(string $mime): string

@@ -7,7 +7,7 @@
         </button>
         <label class="btn btn-sm btn-outline-secondary mb-0">
             <i class="fa fa-upload me-1"></i> Upload new
-            <input type="file" class="d-none" accept="image/*" wire:model="upload">
+            <input type="file" class="d-none" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,.jpg,.jpeg,.png,.webp,.gif,.bmp" wire:model="upload">
         </label>
         @if($value)
             <button type="button" class="btn btn-sm btn-outline-danger" wire:click="clearImage">
