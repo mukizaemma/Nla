@@ -736,7 +736,7 @@
                                                         wire:model="headerImages.{{ $index }}"
                                                         accept="image/*"
                                                     >
-                                                    <small class="text-muted">Min 300KB · auto-resize to max 700KB</small>
+                                                    <small class="text-muted">Min 400KB · auto-resize to 400–700KB</small>
                                                     @error('headerImages.' . $index)
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
@@ -744,7 +744,7 @@
                                                         <div class="small text-info mt-1">
                                                             Selected: {{ number_format($headerImages[$index]->getSize() / 1024, 1) }} KB
                                                             @if($headerImages[$index]->getSize() > 700 * 1024)
-                                                                → will resize to ≤700KB on save
+                                                                → will resize to 400–700KB on save
                                                             @endif
                                                         </div>
                                                     @endif

@@ -41,9 +41,9 @@
 
     <p class="small text-muted mb-2">
         @if($allowSmall)
-            Logos may be under 300KB. Images over 700KB are resized automatically.
+            Logos may be under 400KB. Larger images are auto-resized to 400–700KB.
         @else
-            Minimum 300KB · maximum 700KB after automatic resize. JPG/JPEG, PNG, WEBP, GIF, and BMP are accepted.
+            Minimum 400KB · auto-resize to 400–700KB. JPG/JPEG, PNG, WEBP, GIF, and BMP are accepted.
         @endif
     </p>
 

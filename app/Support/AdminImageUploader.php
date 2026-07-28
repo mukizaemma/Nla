@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\MediaAsset;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -11,11 +12,13 @@ use RuntimeException;
 
 class AdminImageUploader
 {
-    public const MIN_BYTES = 300 * 1024; // 300KB
+    /** Minimum source size (logos may be smaller via $allowSmall). */
+    public const MIN_BYTES = 400 * 1024; // 400KB
 
+    /** Maximum stored size after automatic resize. */
     public const MAX_BYTES = 700 * 1024; // 700KB
 
-    public const ABSOLUTE_UPLOAD_MAX_KB = 8192; // Livewire temp upload ceiling
+    public const ABSOLUTE_UPLOAD_MAX_KB = 20480; // Livewire temp upload ceiling (20MB)
 
     /**
      * Process an uploaded image, enforce size rules, store on the public disk,
@@ -42,11 +45,11 @@ class AdminImageUploader
             if (! $allowSmall && $originalBytes < self::MIN_BYTES) {
                 throw new RuntimeException(
                     'Image is too small ('.self::formatBytes($originalBytes).'). '
-                    .'Please upload an image of at least 300KB (logos may be smaller).'
+                    .'Please upload an image of at least 400KB (logos may be smaller).'
                 );
             }
 
-            $processed = self::processToMaxBytes($realPath, $originalBytes);
+            $processed = self::processToTargetRange($realPath, $originalBytes);
             $extension = self::extensionForMime($processed['mime']);
             $filename = Str::uuid()->toString().'.'.$extension;
             $relative = trim($folder, '/').'/'.$filename;
@@ -71,7 +74,6 @@ class AdminImageUploader
                 ]
             );
 
-            // If hash existed but path differs, keep existing media record (duplicate reuse).
             if ($media->wasRecentlyCreated === false && $media->path !== $publicPath) {
                 Storage::disk('public')->delete($relative);
 
@@ -103,9 +105,6 @@ class AdminImageUploader
     }
 
     /**
-     * Inspect a temporary upload and return the size that would be stored
-     * after compression rules (without writing to disk).
-     *
      * @return array{original_bytes: int, final_bytes: int, will_resize: bool, allowed: bool, message: ?string}
      */
     public static function preview(UploadedFile|TemporaryUploadedFile $file, bool $allowSmall = false): array
@@ -123,7 +122,7 @@ class AdminImageUploader
                     'final_bytes' => $originalBytes,
                     'will_resize' => false,
                     'allowed' => false,
-                    'message' => 'Too small (min 300KB). Logos may be smaller.',
+                    'message' => 'Too small (min 400KB). Logos may be smaller.',
                 ];
             }
 
@@ -138,8 +137,16 @@ class AdminImageUploader
             }
 
             try {
-                $processed = self::processToMaxBytes($realPath, $originalBytes);
-                $final = $processed['bytes'];
+                $processed = self::processToTargetRange($realPath, $originalBytes);
+
+                return [
+                    'original_bytes' => $originalBytes,
+                    'final_bytes' => $processed['bytes'],
+                    'will_resize' => true,
+                    'allowed' => true,
+                    'message' => 'Will be resized from '.self::formatBytes($originalBytes)
+                        .' to '.self::formatBytes($processed['bytes']).' (target 400–700KB).',
+                ];
             } catch (\Throwable $e) {
                 return [
                     'original_bytes' => $originalBytes,
@@ -149,15 +156,6 @@ class AdminImageUploader
                     'message' => $e->getMessage(),
                 ];
             }
-
-            return [
-                'original_bytes' => $originalBytes,
-                'final_bytes' => $final,
-                'will_resize' => true,
-                'allowed' => true,
-                'message' => 'Will be resized from '.self::formatBytes($originalBytes)
-                    .' to about '.self::formatBytes($final).' (max 700KB).',
-            ];
         } finally {
             if ($cleanup && is_file($cleanup)) {
                 @unlink($cleanup);
@@ -177,9 +175,6 @@ class AdminImageUploader
         return round($bytes / (1024 * 1024), 2).' MB';
     }
 
-    /**
-     * Register an existing public storage path into the media library.
-     */
     public static function registerExisting(string $publicPath, ?string $folder = null, ?string $source = null): ?MediaAsset
     {
         $publicPath = ltrim($publicPath, '/');
@@ -222,30 +217,30 @@ class AdminImageUploader
     }
 
     /**
-     * Copy Livewire/temp uploads into a real local file GD can read.
-     *
      * @return array{path: string, cleanup: ?string}
      */
     protected static function materializeLocalFile(UploadedFile|TemporaryUploadedFile $file): array
     {
+        $dir = self::tempDir();
+
         if ($file instanceof TemporaryUploadedFile) {
             $contents = $file->get();
+            if ($contents === false || $contents === null || $contents === '') {
+                // Fallback: copy from Livewire storage path.
+                $real = $file->getRealPath();
+                if ($real && is_readable($real)) {
+                    $contents = file_get_contents($real);
+                }
+            }
             if ($contents === false || $contents === null || $contents === '') {
                 throw new RuntimeException('Uploaded image could not be read.');
             }
 
-            $tmp = tempnam(sys_get_temp_dir(), 'nlaimg_');
-            if ($tmp === false) {
-                throw new RuntimeException('Could not create a temporary file for image processing.');
-            }
-
-            // Keep an extension hint for tools like sips / finfo.
             $ext = strtolower((string) $file->getClientOriginalExtension());
             if (! in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'avif'], true)) {
-                $ext = 'img';
+                $ext = 'jpg';
             }
-            $path = $tmp.'.'.$ext;
-            @unlink($tmp);
+            $path = $dir.'/'.Str::uuid().'.'.$ext;
             if (file_put_contents($path, $contents) === false) {
                 throw new RuntimeException('Could not write temporary image for processing.');
             }
@@ -258,201 +253,124 @@ class AdminImageUploader
             throw new RuntimeException('Uploaded image could not be read.');
         }
 
-        return ['path' => $realPath, 'cleanup' => null];
+        // Copy into our temp dir so sips/GD always see a stable local path.
+        $ext = strtolower((string) $file->getClientOriginalExtension()) ?: 'jpg';
+        $path = $dir.'/'.Str::uuid().'.'.$ext;
+        if (! @copy($realPath, $path)) {
+            return ['path' => $realPath, 'cleanup' => null];
+        }
+
+        return ['path' => $path, 'cleanup' => $path];
+    }
+
+    protected static function tempDir(): string
+    {
+        $dir = storage_path('app/image-tmp');
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        return $dir;
     }
 
     /**
+     * Resize/compress into the 400KB–700KB target band when needed.
+     *
      * @return array{binary: string, bytes: int, mime: string, width: int|null, height: int|null, was_resized: bool}
      */
-    protected static function processToMaxBytes(string $realPath, int $originalBytes): array
+    protected static function processToTargetRange(string $realPath, int $originalBytes): array
     {
         self::raiseMemoryLimit();
 
-        // Prefer macOS sips for large / stubborn images (handles CMYK, huge phone JPEGs, HEIC).
-        if ($originalBytes > self::MAX_BYTES || ! self::canGdLoad($realPath)) {
-            $sipsResult = self::compressWithSips($realPath);
-            if ($sipsResult !== null) {
-                return $sipsResult;
-            }
-        }
-
-        $workingPath = self::ensureGdReadable($realPath);
-        $cleanupWorking = $workingPath !== $realPath ? $workingPath : null;
-
-        try {
-            if ($originalBytes <= self::MAX_BYTES && $workingPath === $realPath) {
-                $binary = (string) file_get_contents($workingPath);
-                $info = @getimagesize($workingPath);
-
-                return [
-                    'binary' => $binary,
-                    'bytes' => strlen($binary),
-                    'mime' => (is_array($info) ? ($info['mime'] ?? null) : null) ?: 'image/jpeg',
-                    'width' => is_array($info) ? ($info[0] ?? null) : null,
-                    'height' => is_array($info) ? ($info[1] ?? null) : null,
-                    'was_resized' => false,
-                ];
-            }
-
-            $workingBytes = (int) filesize($workingPath);
-            if ($workingBytes <= self::MAX_BYTES) {
-                $binary = (string) file_get_contents($workingPath);
-                $info = @getimagesize($workingPath);
-
-                return [
-                    'binary' => $binary,
-                    'bytes' => strlen($binary),
-                    'mime' => (is_array($info) ? ($info['mime'] ?? null) : null) ?: 'image/jpeg',
-                    'width' => is_array($info) ? ($info[0] ?? null) : null,
-                    'height' => is_array($info) ? ($info[1] ?? null) : null,
-                    'was_resized' => $workingPath !== $realPath,
-                ];
-            }
-
-            $image = self::loadGdImage($workingPath);
-            if (! $image) {
-                // Last resort: sips again after GD prep failed.
-                $sipsResult = self::compressWithSips($workingPath) ?? self::compressWithSips($realPath);
-                if ($sipsResult !== null) {
-                    return $sipsResult;
-                }
-
-                $format = self::detectFormat($workingPath) ?: self::detectFormat($realPath);
-                \Log::warning('Admin image processing failed', [
-                    'format' => $format,
-                    'bytes' => $originalBytes,
-                    'path' => basename($realPath),
-                    'sips' => self::sipsBinary(),
-                ]);
-                throw new RuntimeException(
-                    'Could not resize this JPEG/PNG ('.self::formatBytes($originalBytes).'). '
-                    .'Try a smaller image, or re-export it from Photos/Preview as JPEG.'
-                );
-            }
-
-            $width = imagesx($image);
-            $height = imagesy($image);
-
-            $maxEdge = 1920;
-            $scale = 1.0;
-            if (max($width, $height) > $maxEdge) {
-                $scale = $maxEdge / max($width, $height);
-            }
-
-            $quality = 82;
-            $binary = '';
-            $outMime = 'image/jpeg';
-            $newW = $width;
-            $newH = $height;
-
-            for ($attempt = 0; $attempt < 16; $attempt++) {
-                $newW = max(1, (int) round($width * $scale));
-                $newH = max(1, (int) round($height * $scale));
-                $canvas = imagecreatetruecolor($newW, $newH);
-                if ($canvas === false) {
-                    imagedestroy($image);
-                    throw new RuntimeException('Unable to allocate image canvas. Try a smaller photo.');
-                }
-                $white = imagecolorallocate($canvas, 255, 255, 255);
-                imagefilledrectangle($canvas, 0, 0, $newW, $newH, $white);
-                imagecopyresampled($canvas, $image, 0, 0, 0, 0, $newW, $newH, $width, $height);
-
-                ob_start();
-                imagejpeg($canvas, null, $quality);
-                $binary = (string) ob_get_clean();
-                imagedestroy($canvas);
-
-                if (strlen($binary) <= self::MAX_BYTES) {
-                    imagedestroy($image);
-
-                    return [
-                        'binary' => $binary,
-                        'bytes' => strlen($binary),
-                        'mime' => $outMime,
-                        'width' => $newW,
-                        'height' => $newH,
-                        'was_resized' => true,
-                    ];
-                }
-
-                if ($quality > 55) {
-                    $quality -= 8;
-                } else {
-                    $scale *= 0.82;
-                    $quality = 78;
-                }
-            }
-
-            imagedestroy($image);
-
-            if ($binary === '' || strlen($binary) > self::MAX_BYTES) {
-                throw new RuntimeException('Could not compress this image under 700KB. Try a smaller photo.');
-            }
+        if ($originalBytes <= self::MAX_BYTES) {
+            $binary = (string) file_get_contents($realPath);
+            $info = @getimagesizefromstring($binary) ?: @getimagesize($realPath);
 
             return [
                 'binary' => $binary,
                 'bytes' => strlen($binary),
-                'mime' => $outMime,
-                'width' => $newW,
-                'height' => $newH,
-                'was_resized' => true,
+                'mime' => (is_array($info) ? ($info['mime'] ?? null) : null) ?: 'image/jpeg',
+                'width' => is_array($info) ? ($info[0] ?? null) : null,
+                'height' => is_array($info) ? ($info[1] ?? null) : null,
+                'was_resized' => false,
             ];
-        } finally {
-            if ($cleanupWorking && is_file($cleanupWorking)) {
-                @unlink($cleanupWorking);
+        }
+
+        // 1) macOS sips (best for huge / HEIC / CMYK)
+        $sips = self::compressWithSips($realPath);
+        if ($sips !== null) {
+            return $sips;
+        }
+
+        // 2) GD with unlimited memory
+        $gd = self::compressWithGd($realPath);
+        if ($gd !== null) {
+            return $gd;
+        }
+
+        // 3) Force convert via sips to a plain JPEG, then GD again
+        $converted = self::forceJpegViaSips($realPath);
+        if ($converted) {
+            try {
+                $sips = self::compressWithSips($converted);
+                if ($sips !== null) {
+                    return $sips;
+                }
+                $gd = self::compressWithGd($converted);
+                if ($gd !== null) {
+                    return $gd;
+                }
+            } finally {
+                @unlink($converted);
             }
         }
+
+        Log::warning('Admin image resize failed', [
+            'bytes' => $originalBytes,
+            'format' => self::detectFormat($realPath),
+            'sips' => self::sipsBinary(),
+            'exec' => function_exists('exec'),
+            'gd' => extension_loaded('gd'),
+        ]);
+
+        throw new RuntimeException(
+            'Could not resize this image ('.self::formatBytes($originalBytes).') into 400–700KB. '
+            .'Please try another JPG/PNG, or re-export it from Preview as JPEG.'
+        );
     }
 
     /**
-     * Resize + compress with macOS sips (no GD decode required).
-     *
      * @return array{binary: string, bytes: int, mime: string, width: int|null, height: int|null, was_resized: bool}|null
      */
     protected static function compressWithSips(string $path): ?array
     {
-        $sips = self::sipsBinary();
-        if ($sips === null || ! is_readable($path)) {
+        if (self::sipsBinary() === null || ! is_readable($path)) {
             return null;
         }
 
-        $edges = [1920, 1600, 1280, 1024, 800];
-        $qualities = [70, 60, 50, 40, 30];
+        $edges = [1920, 1600, 1400, 1280, 1024, 900, 800, 640];
+        $qualities = [85, 75, 65, 55, 45, 35, 25];
+        $bestUnderMax = null;
 
         foreach ($edges as $edge) {
             foreach ($qualities as $quality) {
-                $out = tempnam(sys_get_temp_dir(), 'nlacomp_');
-                if ($out === false) {
-                    return null;
-                }
-                $target = $out.'.jpg';
-                @unlink($out);
+                $target = self::tempDir().'/'.Str::uuid().'.jpg';
 
-                $cmd = escapeshellarg($sips)
-                    .' -s format jpeg'
-                    .' -s formatOptions '.escapeshellarg((string) $quality)
-                    .' --resampleHeightWidthMax '.escapeshellarg((string) $edge).' '
-                    .escapeshellarg($path)
-                    .' --out '
-                    .escapeshellarg($target)
-                    .' 2>&1';
+                // Try with quality option, then without (older macOS).
+                $ok = self::runSipsCommand($path, $target, $edge, $quality)
+                    || self::runSipsCommand($path, $target, $edge, null);
 
-                $output = [];
-                $code = 0;
-                exec($cmd, $output, $code);
-
-                if ($code !== 0 || ! is_file($target) || filesize($target) < 32) {
-                    @unlink($target);
-                    continue;
-                }
-
-                // Accept by magic bytes — do not require GD (avoids memory false-negatives).
-                if (self::detectFormat($target) !== 'jpeg') {
+                if (! $ok) {
                     @unlink($target);
                     continue;
                 }
 
                 $bytes = (int) filesize($target);
+                if ($bytes < 32 || self::detectFormat($target) !== 'jpeg') {
+                    @unlink($target);
+                    continue;
+                }
+
                 if ($bytes > self::MAX_BYTES) {
                     @unlink($target);
                     continue;
@@ -462,7 +380,7 @@ class AdminImageUploader
                 $info = @getimagesize($target);
                 @unlink($target);
 
-                return [
+                $candidate = [
                     'binary' => $binary,
                     'bytes' => strlen($binary),
                     'mime' => 'image/jpeg',
@@ -470,99 +388,143 @@ class AdminImageUploader
                     'height' => is_array($info) ? ($info[1] ?? null) : null,
                     'was_resized' => true,
                 ];
-            }
-        }
 
-        return null;
-    }
-
-    /**
-     * Make sure the file is in a format GD can decode (convert HEIC/etc. on macOS via sips).
-     * Also downscales very large images via sips first so PHP/GD does not run out of memory.
-     */
-    protected static function ensureGdReadable(string $path): string
-    {
-        $working = $path;
-
-        if (! self::canGdLoad($working)) {
-            $format = self::detectFormat($working);
-            $converted = self::runSips($working, [
-                '-s', 'format', 'jpeg',
-                '-s', 'formatOptions', '80',
-                '--resampleHeightWidthMax', '1920',
-            ]);
-            if ($converted) {
-                $working = $converted;
-            } elseif ($format === 'heic' || $format === 'heif') {
-                throw new RuntimeException(
-                    'This looks like an iPhone HEIC photo saved with a .JPEG name. '
-                    .'Export it as JPG in Photos (File → Export → JPEG), or try another image.'
-                );
-            }
-        }
-
-        $info = @getimagesize($working);
-        if (is_array($info) && (int) filesize($working) > self::MAX_BYTES) {
-            $w = (int) ($info[0] ?? 0);
-            $h = (int) ($info[1] ?? 0);
-            if (max($w, $h) > 2200) {
-                $resized = self::runSips($working, [
-                    '-s', 'format', 'jpeg',
-                    '-s', 'formatOptions', '80',
-                    '--resampleHeightWidthMax', '1920',
-                ]);
-                if ($resized) {
-                    if ($working !== $path && is_file($working)) {
-                        @unlink($working);
-                    }
-                    $working = $resized;
+                // Prefer landing in the 400–700KB band.
+                if ($candidate['bytes'] >= self::MIN_BYTES) {
+                    return $candidate;
                 }
+
+                // Keep the largest under-max result under 400KB as fallback.
+                if ($bestUnderMax === null || $candidate['bytes'] > $bestUnderMax['bytes']) {
+                    $bestUnderMax = $candidate;
+                }
+
+                // No need to shrink further once we have something under max.
+                break 2;
             }
         }
 
-        return $working;
+        return $bestUnderMax;
     }
 
-    /**
-     * @param  list<string>  $args
-     */
-    protected static function runSips(string $path, array $args): ?string
+    protected static function runSipsCommand(string $input, string $output, int $maxEdge, ?int $quality): bool
     {
         $sips = self::sipsBinary();
         if ($sips === null) {
-            return null;
+            return false;
         }
 
-        $out = tempnam(sys_get_temp_dir(), 'nlasips_');
-        if ($out === false) {
-            return null;
-        }
-        $target = $out.'.jpg';
-        @unlink($out);
+        $cmd = escapeshellarg($sips)
+            .' -s format jpeg'
+            .' --resampleHeightWidthMax '.escapeshellarg((string) $maxEdge);
 
-        $cmd = escapeshellarg($sips);
-        foreach ($args as $arg) {
-            $cmd .= ' '.escapeshellarg($arg);
-        }
-        $cmd .= ' '.escapeshellarg($path).' --out '.escapeshellarg($target).' 2>&1';
-
-        $output = [];
-        $code = 0;
-        exec($cmd, $output, $code);
-
-        if ($code !== 0 || ! is_file($target) || filesize($target) < 32) {
-            @unlink($target);
-
-            return null;
+        if ($quality !== null) {
+            $cmd .= ' -s formatOptions '.escapeshellarg((string) $quality);
         }
 
-        if (self::detectFormat($target) !== 'jpeg') {
+        $cmd .= ' '.escapeshellarg($input).' --out '.escapeshellarg($output).' 2>&1';
+
+        $outputLines = [];
+        $code = 1;
+        if (function_exists('exec')) {
+            @exec($cmd, $outputLines, $code);
+        }
+
+        // Accept a valid JPEG even if sips returned a non-zero status (macOS warnings).
+        return is_file($output) && filesize($output) > 32 && self::detectFormat($output) === 'jpeg';
+    }
+
+    protected static function forceJpegViaSips(string $path): ?string
+    {
+        $target = self::tempDir().'/'.Str::uuid().'.jpg';
+        if (! self::runSipsCommand($path, $target, 1920, 80)) {
             @unlink($target);
 
             return null;
         }
 
         return $target;
+    }
+
+    /**
+     * @return array{binary: string, bytes: int, mime: string, width: int|null, height: int|null, was_resized: bool}|null
+     */
+    protected static function compressWithGd(string $path): ?array
+    {
+        self::raiseMemoryLimit();
+        @ini_set('memory_limit', '-1');
+
+        $image = self::loadGdImage($path);
+        if (! $image) {
+            return null;
+        }
+
+        $width = imagesx($image);
+        $height = imagesy($image);
+        $scale = 1.0;
+        if (max($width, $height) > 1920) {
+            $scale = 1920 / max($width, $height);
+        }
+
+        $quality = 85;
+        $bestUnderMax = null;
+        $binary = '';
+        $newW = $width;
+        $newH = $height;
+
+        for ($attempt = 0; $attempt < 24; $attempt++) {
+            $newW = max(1, (int) round($width * $scale));
+            $newH = max(1, (int) round($height * $scale));
+            $canvas = imagecreatetruecolor($newW, $newH);
+            if ($canvas === false) {
+                break;
+            }
+
+            $white = imagecolorallocate($canvas, 255, 255, 255);
+            imagefilledrectangle($canvas, 0, 0, $newW, $newH, $white);
+            imagecopyresampled($canvas, $image, 0, 0, 0, 0, $newW, $newH, $width, $height);
+
+            ob_start();
+            imagejpeg($canvas, null, $quality);
+            $binary = (string) ob_get_clean();
+            imagedestroy($canvas);
+
+            $bytes = strlen($binary);
+            if ($bytes <= self::MAX_BYTES) {
+                $candidate = [
+                    'binary' => $binary,
+                    'bytes' => $bytes,
+                    'mime' => 'image/jpeg',
+                    'width' => $newW,
+                    'height' => $newH,
+                    'was_resized' => true,
+                ];
+
+                if ($bytes >= self::MIN_BYTES) {
+                    imagedestroy($image);
+
+                    return $candidate;
+                }
+
+                if ($bestUnderMax === null || $bytes > $bestUnderMax['bytes']) {
+                    $bestUnderMax = $candidate;
+                }
+
+                // Already under max; stop shrinking.
+                break;
+            }
+
+            if ($quality > 40) {
+                $quality -= 7;
+            } else {
+                $scale *= 0.82;
+                $quality = 75;
+            }
+        }
+
+        imagedestroy($image);
+
+        return $bestUnderMax;
     }
 
     protected static function sipsBinary(): ?string
@@ -572,9 +534,18 @@ class AdminImageUploader
             return $cached ?: null;
         }
 
-        foreach (['/usr/bin/sips', trim((string) shell_exec('command -v sips 2>/dev/null'))] as $candidate) {
-            if ($candidate !== '' && is_executable($candidate)) {
+        foreach (['/usr/bin/sips', '/bin/sips'] as $candidate) {
+            if (is_executable($candidate)) {
                 $cached = $candidate;
+
+                return $cached;
+            }
+        }
+
+        if (function_exists('shell_exec')) {
+            $path = trim((string) @shell_exec('command -v sips 2>/dev/null'));
+            if ($path !== '' && is_executable($path)) {
+                $cached = $path;
 
                 return $cached;
             }
@@ -583,17 +554,6 @@ class AdminImageUploader
         $cached = '';
 
         return null;
-    }
-
-    protected static function canGdLoad(string $path): bool
-    {
-        $image = self::loadGdImage($path);
-        if (! $image) {
-            return false;
-        }
-        imagedestroy($image);
-
-        return true;
     }
 
     protected static function detectFormat(string $path): ?string
@@ -626,24 +586,21 @@ class AdminImageUploader
         if (str_starts_with($bytes, 'RIFF') && str_contains(substr($bytes, 0, 16), 'WEBP')) {
             return 'webp';
         }
-        if (str_starts_with($bytes, 'II*\x00') || str_starts_with($bytes, 'MM\x00*')) {
+        if (str_starts_with($bytes, "II*\x00") || str_starts_with($bytes, "MM\x00*")) {
             return 'tiff';
         }
 
-        // ISO BMFF brands (HEIC/HEIF/AVIF): bytes 4..8 = "ftyp"
         if (strlen($bytes) >= 12 && substr($bytes, 4, 4) === 'ftyp') {
             $brand = strtolower(substr($bytes, 8, 4));
             if (in_array($brand, ['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'heim', 'heis'], true)) {
                 return 'heic';
             }
-            if (in_array($brand, ['heif'], true)) {
+            if ($brand === 'heif') {
                 return 'heif';
             }
             if (in_array($brand, ['avif', 'avis'], true)) {
                 return 'avif';
             }
-
-            // Some HEIF files use other brands; sniff remaining header.
             $header = strtolower($bytes);
             if (str_contains($header, 'heic') || str_contains($header, 'heif')) {
                 return 'heic';
@@ -660,34 +617,8 @@ class AdminImageUploader
 
     protected static function raiseMemoryLimit(): void
     {
-        $current = ini_get('memory_limit');
-        if ($current === false || $current === '' || $current === '-1') {
-            return;
-        }
-
-        $bytes = self::memoryLimitToBytes((string) $current);
-        $target = 512 * 1024 * 1024;
-        if ($bytes > 0 && $bytes < $target) {
-            @ini_set('memory_limit', '512M');
-        }
-    }
-
-    protected static function memoryLimitToBytes(string $value): int
-    {
-        $value = trim($value);
-        if ($value === '-1') {
-            return -1;
-        }
-
-        $unit = strtolower(substr($value, -1));
-        $number = (int) $value;
-
-        return match ($unit) {
-            'g' => $number * 1024 * 1024 * 1024,
-            'm' => $number * 1024 * 1024,
-            'k' => $number * 1024,
-            default => (int) $value,
-        };
+        @ini_set('memory_limit', '1024M');
+        @ini_set('memory_limit', '-1');
     }
 
     /** @return \GdImage|resource|null */
@@ -697,12 +628,12 @@ class AdminImageUploader
             return null;
         }
 
+        self::raiseMemoryLimit();
+
         $info = @getimagesize($path);
         $detectedType = is_array($info) ? (int) ($info[2] ?? 0) : 0;
 
         $loaders = [];
-
-        // Prefer binary decode first — ignores wrong extensions/MIME.
         $loaders[] = static function () use ($path) {
             $data = @file_get_contents($path);
 
@@ -735,7 +666,7 @@ class AdminImageUploader
                     return $image;
                 }
             } catch (\Throwable $e) {
-                // try next loader
+                // try next
             }
         }
 

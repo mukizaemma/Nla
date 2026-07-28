@@ -88,7 +88,7 @@ class ImageField extends Component
                 : (
                     ($result['was_resized'] ? 'Resized & saved — ' : 'Saved — ')
                     .AdminImageUploader::formatBytes($result['bytes'])
-                    .($result['was_resized'] ? ' (was larger than 700KB)' : '')
+                    .($result['was_resized'] ? ' (target 400–700KB)' : '')
                 );
             $this->previewFinalBytes = $result['bytes'];
             $this->upload = null;
