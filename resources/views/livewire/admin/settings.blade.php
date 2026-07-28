@@ -8,16 +8,6 @@
         <ul class="nav nav-tabs mb-4" role="tablist">
             <li class="nav-item" role="presentation">
                 <button
-                    class="nav-link {{ $activeTab === 'account' ? 'active' : '' }}"
-                    wire:click="setTab('account')"
-                    type="button"
-                    role="tab"
-                >
-                    <i class="fa fa-user-circle me-2"></i>Admin Account
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button
                     class="nav-link {{ $activeTab === 'contacts' ? 'active' : '' }}"
                     wire:click="setTab('contacts')"
                     type="button"
@@ -44,6 +34,16 @@
                     role="tab"
                 >
                     <i class="fa fa-image me-2"></i>Page Headers
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button
+                    class="nav-link {{ $activeTab === 'account' ? 'active' : '' }}"
+                    wire:click="setTab('account')"
+                    type="button"
+                    role="tab"
+                >
+                    <i class="fa fa-user-circle me-2"></i>Admin Account
                 </button>
             </li>
         </ul>

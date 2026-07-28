@@ -19,7 +19,7 @@ class Settings extends Component
     use WithFileUploads;
 
     #[Url(as: 'tab', keep: true)]
-    public string $activeTab = 'account';
+    public string $activeTab = 'contacts';
 
     // Account tab
     public string $account_name = '';
@@ -119,9 +119,9 @@ class Settings extends Component
     public function mount()
     {
         // Validate tab parameter
-        $validTabs = ['account', 'contacts', 'info', 'headers'];
+        $validTabs = ['contacts', 'info', 'headers', 'account'];
         if (!in_array($this->activeTab, $validTabs)) {
-            $this->activeTab = 'account';
+            $this->activeTab = 'contacts';
         }
 
         $this->loadAccount();
@@ -131,7 +131,7 @@ class Settings extends Component
 
     public function setTab(string $tab): void
     {
-        $validTabs = ['account', 'contacts', 'info', 'headers'];
+        $validTabs = ['contacts', 'info', 'headers', 'account'];
         if (in_array($tab, $validTabs)) {
             $this->activeTab = $tab;
         }
