@@ -2,57 +2,94 @@
 
 namespace App\Livewire\Admin\Gallery;
 
+use App\Models\MediaAsset;
 use App\Models\MediaGalleryItem;
+use App\Support\AdminImageUploader;
+use App\Support\MediaLibrarySync;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
-use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 #[Layout('layouts.admin')]
 class Index extends Component
 {
-    use WithFileUploads, WithPagination;
+    use WithPagination;
+
+    public string $tab = 'library';
 
     public string $search = '';
-    public string $typeFilter = '';
-    public ?int $editingId = null;
-    public bool $showFormModal = false;
-    public string $type = 'image';
-    public $image;
-    public ?string $image_path = null;
-    public ?string $video_url = null;
-    public ?string $title = null;
-    public ?string $caption = null;
-    public bool $is_featured = false;
-    public bool $is_active = true;
-    public ?int $sort_order = null;
 
-    protected function rules(): array
-    {
-        $rules = [
-            'type' => ['required', 'in:image,video'],
-            'title' => ['nullable', 'string', 'max:255'],
-            'caption' => ['nullable', 'string'],
-            'is_featured' => ['boolean'],
-            'is_active' => ['boolean'],
-            'sort_order' => ['nullable', 'integer', 'min:0'],
-        ];
-        if ($this->type === 'image') {
-            $rules['image'] = $this->editingId ? ['nullable', 'image', 'max:4096'] : ['required', 'image', 'max:4096'];
-        } else {
-            $rules['video_url'] = ['nullable', 'url', 'max:500'];
-        }
-        return $rules;
-    }
+    public string $typeFilter = '';
+
+    public ?int $editingId = null;
+
+    public bool $showFormModal = false;
+
+    public string $type = 'image';
+
+    public ?string $image_path = null;
+
+    public ?string $video_url = null;
+
+    public ?string $title = null;
+
+    public ?string $caption = null;
+
+    public bool $is_featured = false;
+
+    public bool $is_active = true;
+
+    public ?int $sort_order = null;
 
     public function updatingSearch(): void
     {
         $this->resetPage();
     }
 
-    public function updatingTypeFilter(): void
+    public function setTab(string $tab): void
     {
+        $this->tab = in_array($tab, ['library', 'public'], true) ? $tab : 'library';
         $this->resetPage();
+    }
+
+    public function syncLibrary(): void
+    {
+        $result = MediaLibrarySync::syncAndDeduplicate();
+        $this->dispatch('swal', [
+            'icon' => 'success',
+            'title' => 'Library synced',
+            'text' => "Registered {$result['registered']} new image(s). Removed {$result['duplicates_removed']} duplicate file(s).",
+            'timer' => 4500,
+        ]);
+    }
+
+    public function removeDuplicateFiles(): void
+    {
+        $result = MediaLibrarySync::syncAndDeduplicate();
+        $this->dispatch('swal', [
+            'icon' => 'success',
+            'title' => 'Duplicates cleaned',
+            'text' => "Removed {$result['duplicates_removed']} duplicate file(s) from storage.",
+            'timer' => 4000,
+        ]);
+    }
+
+    public function deleteAsset(int $id): void
+    {
+        $asset = MediaAsset::findOrFail($id);
+        $path = $asset->path;
+        $asset->deleteFileAndRecord();
+
+        // Also detach from public gallery items that pointed at this file.
+        MediaGalleryItem::query()
+            ->where('image_path', $path)
+            ->update(['image_path' => null, 'is_active' => false]);
+
+        $this->dispatch('swal', [
+            'icon' => 'success',
+            'title' => 'Image removed',
+            'text' => 'The image was deleted from the library.',
+        ]);
     }
 
     public function create(): void
@@ -60,6 +97,7 @@ class Index extends Component
         $this->resetForm();
         $this->editingId = null;
         $this->showFormModal = true;
+        $this->tab = 'public';
     }
 
     public function closeFormModal(): void
@@ -75,68 +113,66 @@ class Index extends Component
         $this->editingId = $g->id;
         $this->type = $g->type;
         $this->image_path = $g->image_path;
-        $this->image = null;
         $this->video_url = $g->video_url ?? '';
         $this->title = $g->title ?? '';
         $this->caption = $g->caption ?? '';
-        $this->is_featured = $g->is_featured;
-        $this->is_active = $g->is_active;
+        $this->is_featured = (bool) $g->is_featured;
+        $this->is_active = (bool) $g->is_active;
         $this->sort_order = $g->sort_order;
         $this->showFormModal = true;
+        $this->tab = 'public';
     }
 
     public function save(): void
     {
-        $data = $this->validate();
+        $rules = [
+            'type' => ['required', 'in:image,video'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'caption' => ['nullable', 'string'],
+            'is_featured' => ['boolean'],
+            'is_active' => ['boolean'],
+            'sort_order' => ['nullable', 'integer', 'min:0'],
+            'video_url' => ['nullable', 'url', 'max:500'],
+            'image_path' => [$this->type === 'image' ? 'required' : 'nullable', 'string', 'max:500'],
+        ];
+        $data = $this->validate($rules);
+
         $payload = [
             'type' => $data['type'],
             'title' => $data['title'] ?: null,
             'caption' => $data['caption'] ?: null,
             'is_featured' => $data['is_featured'],
             'is_active' => $data['is_active'],
-            'sort_order' => $data['sort_order'] ?? null,
+            'sort_order' => $data['sort_order'] ?? 0,
+            'image_path' => $data['type'] === 'image' ? ($data['image_path'] ?? null) : null,
+            'video_url' => $data['type'] === 'video' ? ($data['video_url'] ?? null) : null,
         ];
-        if ($this->type === 'image' && $this->image) {
-            $path = $this->image->store('gallery', 'public');
-            $payload['image_path'] = 'storage/' . $path;
-            $payload['video_url'] = null;
-        } elseif ($this->type === 'video') {
-            $payload['video_url'] = $data['video_url'] ?: null;
-            if (!$this->editingId || $this->image) {
-                $payload['image_path'] = null;
-            }
+
+        if ($payload['type'] === 'image' && $payload['image_path']) {
+            AdminImageUploader::registerExisting($payload['image_path'], 'gallery', 'gallery');
         }
+
         if ($this->editingId) {
-            $model = MediaGalleryItem::findOrFail($this->editingId);
-            $model->update($payload);
-            $this->image_path = $model->image_path;
-            session()->flash('success', 'Gallery item updated successfully.');
+            MediaGalleryItem::findOrFail($this->editingId)->update($payload);
+            session()->flash('success', 'Gallery item updated.');
         } else {
-            if ($this->type === 'image' && empty($payload['image_path'])) {
-                session()->flash('error', 'Image is required for image type.');
-                return;
-            }
             MediaGalleryItem::create($payload);
-            session()->flash('success', 'Gallery item created successfully.');
+            session()->flash('success', 'Gallery item created.');
         }
-        $this->resetForm();
-        $this->editingId = null;
-        $this->showFormModal = false;
+
+        $this->closeFormModal();
     }
 
     public function delete(int $id): void
     {
         MediaGalleryItem::findOrFail($id)->delete();
-        session()->flash('success', 'Gallery item deleted successfully.');
-        $this->showFormModal = false;
-        $this->resetForm();
-        $this->editingId = null;
+        session()->flash('success', 'Gallery item deleted.');
+        $this->closeFormModal();
     }
 
     protected function resetForm(): void
     {
         $this->type = 'image';
-        $this->image = null;
         $this->image_path = null;
         $this->video_url = null;
         $this->title = null;
@@ -144,22 +180,44 @@ class Index extends Component
         $this->is_featured = false;
         $this->is_active = true;
         $this->sort_order = null;
-        $this->resetValidation();
-    }
-
-    public function getItemsProperty()
-    {
-        return MediaGalleryItem::query()
-            ->when($this->search, fn($q) => $q->where('title', 'like', '%' . $this->search . '%')
-                ->orWhere('caption', 'like', '%' . $this->search . '%'))
-            ->when($this->typeFilter !== '', fn($q) => $q->where('type', $this->typeFilter))
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->paginate(10);
+        $this->resetErrorBag();
     }
 
     public function render()
     {
-        return view('livewire.admin.gallery.index', ['items' => $this->items]);
+        $library = null;
+        $publicItems = null;
+
+        if ($this->tab === 'library') {
+            $query = MediaAsset::query()->orderByDesc('created_at');
+            if ($this->search !== '') {
+                $term = '%'.$this->search.'%';
+                $query->where(function ($q) use ($term) {
+                    $q->where('original_name', 'like', $term)
+                        ->orWhere('folder', 'like', $term)
+                        ->orWhere('path', 'like', $term)
+                        ->orWhere('source', 'like', $term);
+                });
+            }
+            $library = $query->paginate(24);
+        } else {
+            $query = MediaGalleryItem::query()->orderBy('sort_order')->orderByDesc('id');
+            if ($this->search !== '') {
+                $term = '%'.$this->search.'%';
+                $query->where(function ($q) use ($term) {
+                    $q->where('title', 'like', $term)->orWhere('caption', 'like', $term);
+                });
+            }
+            if ($this->typeFilter !== '') {
+                $query->where('type', $this->typeFilter);
+            }
+            $publicItems = $query->paginate(15);
+        }
+
+        return view('livewire.admin.gallery.index', [
+            'library' => $library,
+            'publicItems' => $publicItems,
+            'libraryCount' => MediaAsset::count(),
+        ]);
     }
 }

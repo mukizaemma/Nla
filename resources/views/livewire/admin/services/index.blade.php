@@ -133,14 +133,14 @@
                                 @error('description') <small class="text-danger">{{ $message }}</small> @enderror
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Cover Image</label>
-                                <input type="file" class="form-control" wire:model="cover_image" accept="image/*">
+                                <livewire:admin.shared.image-field
+                                    wire:model="cover_image"
+                                    folder="services"
+                                    label="Cover Image"
+                                    source="services"
+                                    :key="'service-cover-'.($editingId ?? 'new')"
+                                />
                                 @error('cover_image') <small class="text-danger">{{ $message }}</small> @enderror
-                                @if($cover_image)
-                                    <img src="{{ $cover_image->temporaryUrl() }}" alt="Preview" class="img-fluid rounded mt-2" style="max-height: 100px;">
-                                @elseif($cover_image_path)
-                                    <img src="{{ asset($cover_image_path) }}" alt="Current" class="img-fluid rounded mt-2" style="max-height: 100px;">
-                                @endif
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Sort Order</label>

@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\SchoolActivities;
 
 use App\Models\SchoolActivity;
 use App\Models\SchoolActivityImage;
+use App\Support\AdminImageUploader;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -20,7 +21,6 @@ class Index extends Component
     public string $title = '';
     public ?string $excerpt = null;
     public ?string $content = null;
-    public $image;
     public ?string $image_path = null;
     public ?string $published_at = null;
     public bool $is_active = true;
@@ -36,7 +36,7 @@ class Index extends Component
             'title' => ['required', 'string', 'max:255'],
             'excerpt' => ['nullable', 'string', 'max:500'],
             'content' => ['nullable', 'string'],
-            'image' => ['nullable', 'image', 'max:4096'],
+            'image_path' => ['nullable', 'string', 'max:500'],
             'published_at' => ['nullable', 'date'],
             'is_active' => ['boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
@@ -63,7 +63,6 @@ class Index extends Component
         $this->excerpt = $a->excerpt ?? '';
         $this->content = $a->content ?? '';
         $this->image_path = $a->image_path;
-        $this->image = null;
         $this->published_at = $a->published_at ? $a->published_at->format('Y-m-d\TH:i') : null;
         $this->is_active = $a->is_active;
         $this->sort_order = $a->sort_order;
@@ -81,25 +80,26 @@ class Index extends Component
     {
         $data = $this->validate();
         $slug = $this->uniqueSlug(Str::slug($data['title']), $this->editingId);
+
+        if (! empty($data['image_path'])) {
+            AdminImageUploader::registerExisting($data['image_path'], 'school-activities', 'school-activities');
+        }
+
         $payload = [
             'title' => $data['title'],
             'slug' => $slug,
             'excerpt' => $data['excerpt'] ?? null,
             'content' => $data['content'] ?? null,
+            'image_path' => $data['image_path'] ?? null,
             'is_active' => $data['is_active'],
             'sort_order' => $data['sort_order'] ?? null,
             'published_at' => !empty($data['published_at']) ? \Carbon\Carbon::parse($data['published_at']) : null,
         ];
 
-        if ($this->image) {
-            $path = $this->image->store('school-activities', 'public');
-            $payload['image_path'] = 'storage/' . $path;
-        }
-
         if ($this->editingId) {
             $model = SchoolActivity::findOrFail($this->editingId);
-            if (!isset($payload['image_path'])) {
-                $payload['image_path'] = $model->image_path;
+            if (empty($payload['image_path'])) {
+                unset($payload['image_path']);
             }
             $model->update($payload);
             session()->flash('success', 'School activity updated successfully.');
@@ -129,16 +129,22 @@ class Index extends Component
         }
         $this->validate([
             'galleryFiles' => ['required', 'array', 'max:10'],
-            'galleryFiles.*' => ['image', 'max:4096'],
+            'galleryFiles.*' => ['image', 'max:'.\App\Support\AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB],
         ]);
         $activity = SchoolActivity::findOrFail($this->editingId);
         $maxOrder = $activity->galleryImages()->max('sort_order') ?? 0;
         foreach ($this->galleryFiles as $file) {
-            $path = $file->store('school-activity-gallery', 'public');
-            $activity->galleryImages()->create([
-                'image_path' => 'storage/' . $path,
-                'sort_order' => ++$maxOrder,
-            ]);
+            try {
+                $result = \App\Support\AdminImageUploader::store($file, 'school-activity-gallery', false, 'school-activities');
+                $activity->galleryImages()->create([
+                    'image_path' => $result['path'],
+                    'sort_order' => ++$maxOrder,
+                ]);
+            } catch (\Throwable $e) {
+                $this->addError('galleryFiles', $e->getMessage());
+
+                return;
+            }
         }
         $this->galleryFiles = [];
         $this->resetValidation();
@@ -176,7 +182,6 @@ class Index extends Component
         $this->title = '';
         $this->excerpt = null;
         $this->content = null;
-        $this->image = null;
         $this->image_path = null;
         $this->published_at = null;
         $this->is_active = true;

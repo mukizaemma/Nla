@@ -93,14 +93,14 @@
                     <div class="modal-body">
                         <form wire:submit.prevent="save" id="slider-form">
                             <div class="mb-3">
-                                <label class="form-label">Slide Image</label>
-                                <input type="file" class="form-control" wire:model="image" accept="image/*">
-                                @error('image') <small class="text-danger">{{ $message }}</small> @enderror
-                                @if($image)
-                                    <img src="{{ $image->temporaryUrl() }}" alt="Preview" class="img-fluid rounded mt-2" style="max-height: 120px;">
-                                @elseif($image_path)
-                                    <img src="{{ asset($image_path) }}" alt="Current" class="img-fluid rounded mt-2" style="max-height: 120px;">
-                                @endif
+                                <livewire:admin.shared.image-field
+                                    wire:model="image_path"
+                                    folder="sliders"
+                                    label="Slide Image"
+                                    source="sliders"
+                                    :key="'slider-img-'.($editingId ?? 'new')"
+                                />
+                                @error('image_path') <small class="text-danger">{{ $message }}</small> @enderror
                                 @if(!$editingId)
                                     <small class="text-muted d-block">Required for new slide.</small>
                                 @endif

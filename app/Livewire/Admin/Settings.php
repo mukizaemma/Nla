@@ -5,6 +5,7 @@ namespace App\Livewire\Admin;
 use App\Models\PageHeader;
 use App\Models\WebsiteSetting;
 use App\Models\User;
+use App\Support\AdminImageUploader;
 use App\Support\SiteFonts;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -322,9 +323,9 @@ class Settings extends Component
             'youtube_url' => ['nullable', 'url'],
             'x_url' => ['nullable', 'url'],
             'threads_url' => ['nullable', 'url'],
-            'logo' => ['nullable', 'image', 'max:2048'], // max 2MB
-            'home_background_image' => ['nullable', 'image', 'max:4096'], // max 4MB
-            'cta_background_image' => ['nullable', 'image', 'max:4096'], // max 4MB
+            'logo_path' => ['nullable', 'string', 'max:500'],
+            'home_background_image_path' => ['nullable', 'string', 'max:500'],
+            'cta_background_image_path' => ['nullable', 'string', 'max:500'],
             'cta_title' => ['nullable', 'string', 'max:255'],
             'cta_description' => ['nullable', 'string'],
             'gallery_external_url' => ['nullable', 'string', 'max:500'],
@@ -355,38 +356,24 @@ class Settings extends Component
             'x_url' => $this->x_url,
             'threads_url' => $this->threads_url,
             'gallery_external_url' => $this->gallery_external_url,
+            'logo_path' => $this->logo_path,
+            'home_background_image_path' => $this->home_background_image_path,
+            'cta_background_image_path' => $this->cta_background_image_path,
+            'cta_title' => $this->cta_title,
+            'cta_description' => $this->cta_description,
         ]);
-
-        // Handle logo upload (if a new file was selected)
-        if ($this->logo) {
-            $path = $this->logo->store('logos', 'public');
-            // Store path in a way that works with asset()
-            $settings->logo_path = 'storage/' . $path;
-            $this->logo_path = $settings->logo_path;
-        }
-
-        // Handle home background image upload (if a new file was selected)
-        if ($this->home_background_image) {
-            $bgPath = $this->home_background_image->store('hero', 'public');
-            $settings->home_background_image_path = 'storage/' . $bgPath;
-            $this->home_background_image_path = $settings->home_background_image_path;
-        }
-
-        // CTA section
-        $settings->cta_title = $this->cta_title;
-        $settings->cta_description = $this->cta_description;
-        if ($this->cta_background_image) {
-            $ctaPath = $this->cta_background_image->store('cta', 'public');
-            $settings->cta_background_image_path = 'storage/' . $ctaPath;
-            $this->cta_background_image_path = $settings->cta_background_image_path;
-        }
 
         $settings->save();
 
-        // Clear temporary uploads so the file inputs reset
-        $this->logo = null;
-        $this->home_background_image = null;
-        $this->cta_background_image = null;
+        if ($this->logo_path) {
+            AdminImageUploader::registerExisting($this->logo_path, 'logos', 'settings');
+        }
+        if ($this->home_background_image_path) {
+            AdminImageUploader::registerExisting($this->home_background_image_path, 'hero', 'settings');
+        }
+        if ($this->cta_background_image_path) {
+            AdminImageUploader::registerExisting($this->cta_background_image_path, 'cta', 'settings');
+        }
 
         session()->flash('success', 'School information updated successfully.');
         $this->dispatch('swal', [
@@ -401,7 +388,7 @@ class Settings extends Component
         $this->validate([
             'headers.*.title' => ['nullable', 'string'],
             'headers.*.caption' => ['nullable', 'string'],
-            'headerImages.*' => ['nullable', 'image', 'max:4096'],
+            'headerImages.*' => ['nullable', 'image', 'max:'.AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB],
         ]);
 
         foreach ($this->headers as $index => $header) {
@@ -422,10 +409,20 @@ class Settings extends Component
                 $model->image_path = null;
                 $this->headers[$index]['image_path'] = null;
             } elseif (isset($this->headerImages[$index]) && $this->headerImages[$index]) {
-                // New image uploaded: store and set path
-                $path = $this->headerImages[$index]->store('headers', 'public');
-                $model->image_path = 'storage/' . $path;
-                $this->headers[$index]['image_path'] = $model->image_path;
+                try {
+                    $result = AdminImageUploader::store(
+                        $this->headerImages[$index],
+                        'headers',
+                        false,
+                        'page-headers'
+                    );
+                    $model->image_path = $result['path'];
+                    $this->headers[$index]['image_path'] = $model->image_path;
+                } catch (\Throwable $e) {
+                    $this->addError('headerImages.'.$index, $e->getMessage());
+
+                    return;
+                }
             } else {
                 $model->image_path = $header['image_path'] ?? $model->image_path;
             }

@@ -104,14 +104,15 @@
                                 @error('name') <small class="text-danger">{{ $message }}</small> @enderror
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Logo</label>
-                                <input type="file" class="form-control" wire:model="logo" accept="image/*">
-                                @error('logo') <small class="text-danger">{{ $message }}</small> @enderror
-                                @if($logo)
-                                    <img src="{{ $logo->temporaryUrl() }}" alt="Preview" class="img-fluid rounded mt-2" style="max-height: 80px;">
-                                @elseif($logo_path)
-                                    <img src="{{ asset($logo_path) }}" alt="Current" class="img-fluid rounded mt-2" style="max-height: 80px;">
-                                @endif
+                                <livewire:admin.shared.image-field
+                                    wire:model="logo_path"
+                                    folder="partners"
+                                    label="Logo"
+                                    source="partners"
+                                    :allow-small="true"
+                                    :key="'partner-logo-'.($editingId ?? 'new')"
+                                />
+                                @error('logo_path') <small class="text-danger">{{ $message }}</small> @enderror
                                 @if(!$editingId)
                                     <small class="text-muted d-block">Required for new partner.</small>
                                 @endif

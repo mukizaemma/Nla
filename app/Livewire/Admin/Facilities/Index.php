@@ -3,22 +3,21 @@
 namespace App\Livewire\Admin\Facilities;
 
 use App\Models\Facility;
+use App\Support\AdminImageUploader;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
-use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 #[Layout('layouts.admin')]
 class Index extends Component
 {
-    use WithFileUploads, WithPagination;
+    use WithPagination;
 
     public string $search = '';
     public ?int $editingId = null;
     public string $name = '';
     public ?string $description = null;
-    public $image;
     public ?string $image_path = null;
     public bool $is_active = true;
     public ?int $sort_order = null;
@@ -29,7 +28,7 @@ class Index extends Component
         return [
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'image' => ['nullable', 'image', 'max:4096'],
+            'image_path' => ['nullable', 'string', 'max:500'],
             'is_active' => ['boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
@@ -54,7 +53,6 @@ class Index extends Component
         $this->name = $f->name;
         $this->description = $f->description ?? '';
         $this->image_path = $f->image_path;
-        $this->image = null;
         $this->is_active = $f->is_active;
         $this->sort_order = $f->sort_order;
         $this->showFormModal = true;
@@ -71,23 +69,24 @@ class Index extends Component
     {
         $data = $this->validate();
         $slug = $this->uniqueSlug(Str::slug($data['name']), $this->editingId);
+
+        if (! empty($data['image_path'])) {
+            AdminImageUploader::registerExisting($data['image_path'], 'facilities', 'facilities');
+        }
+
         $payload = [
             'name' => $data['name'],
             'slug' => $slug,
             'description' => $data['description'] ?? null,
+            'image_path' => $data['image_path'] ?? null,
             'is_active' => $data['is_active'],
             'sort_order' => $data['sort_order'] ?? null,
         ];
 
-        if ($this->image) {
-            $path = $this->image->store('facilities', 'public');
-            $payload['image_path'] = 'storage/' . $path;
-        }
-
         if ($this->editingId) {
             $model = Facility::findOrFail($this->editingId);
-            if (!isset($payload['image_path'])) {
-                $payload['image_path'] = $model->image_path;
+            if (empty($payload['image_path'])) {
+                unset($payload['image_path']);
             }
             $model->update($payload);
             session()->flash('success', 'Facility updated successfully.');
@@ -133,7 +132,6 @@ class Index extends Component
     {
         $this->name = '';
         $this->description = null;
-        $this->image = null;
         $this->image_path = null;
         $this->is_active = true;
         $this->sort_order = null;

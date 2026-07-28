@@ -281,55 +281,26 @@
                                     @enderror
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">School Logo</label>
-                                    <input
-                                        type="file"
-                                        class="form-control @error('logo') is-invalid @enderror"
-                                        wire:model="logo"
-                                        accept="image/*"
-                                    >
-                                    @error('logo')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-
-                                    @if($logo)
-                                        <div class="mt-2">
-                                            <span class="text-muted small d-block mb-1">Logo preview (new upload):</span>
-                                            <img src="{{ $logo->temporaryUrl() }}" alt="Logo preview" class="img-fluid rounded border" style="max-height: 80px;">
-                                        </div>
-                                    @elseif($logo_path)
-                                        <div class="mt-2">
-                                            <span class="text-muted small d-block mb-1">Current logo:</span>
-                                            <img src="{{ asset($logo_path) }}" alt="Current logo" class="img-fluid rounded border" style="max-height: 80px;">
-                                        </div>
-                                    @endif
+                                    <livewire:admin.shared.image-field
+                                        wire:model="logo_path"
+                                        folder="logos"
+                                        label="School Logo"
+                                        source="settings"
+                                        :allow-small="true"
+                                        :key="'settings-logo'"
+                                    />
                                 </div>
                             </div>
 
                             <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label class="form-label">Home Background Image</label>
-                                    <input
-                                        type="file"
-                                        class="form-control @error('home_background_image') is-invalid @enderror"
-                                        wire:model="home_background_image"
-                                        accept="image/*"
-                                    >
-                                    @error('home_background_image')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-
-                                    @if($home_background_image)
-                                        <div class="mt-2">
-                                            <span class="text-muted small d-block mb-1">Background preview (new upload):</span>
-                                            <img src="{{ $home_background_image->temporaryUrl() }}" alt="Background preview" class="img-fluid rounded border" style="max-height: 120px;">
-                                        </div>
-                                    @elseif($home_background_image_path)
-                                        <div class="mt-2">
-                                            <span class="text-muted small d-block mb-1">Current background image:</span>
-                                            <img src="{{ asset($home_background_image_path) }}" alt="Current background" class="img-fluid rounded border" style="max-height: 120px;">
-                                        </div>
-                                    @endif
+                                    <livewire:admin.shared.image-field
+                                        wire:model="home_background_image_path"
+                                        folder="hero"
+                                        label="Home Background Image"
+                                        source="settings"
+                                        :key="'settings-hero'"
+                                    />
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Home Background Text</label>
@@ -440,27 +411,13 @@
                             <p class="text-muted small mb-3">The call-to-action block on the home page with parallax background. Single title and centered text.</p>
                             <div class="row">
                                 <div class="col-12 mb-3">
-                                    <label class="form-label">CTA Background Image</label>
-                                    <input
-                                        type="file"
-                                        class="form-control @error('cta_background_image') is-invalid @enderror"
-                                        wire:model="cta_background_image"
-                                        accept="image/*"
-                                    >
-                                    @error('cta_background_image')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                    @if($cta_background_image)
-                                        <div class="mt-2">
-                                            <span class="text-muted small d-block mb-1">Preview (new upload):</span>
-                                            <img src="{{ $cta_background_image->temporaryUrl() }}" alt="CTA preview" class="img-fluid rounded border" style="max-height: 120px;">
-                                        </div>
-                                    @elseif($cta_background_image_path)
-                                        <div class="mt-2">
-                                            <span class="text-muted small d-block mb-1">Current background:</span>
-                                            <img src="{{ asset($cta_background_image_path) }}" alt="Current CTA background" class="img-fluid rounded border" style="max-height: 120px;">
-                                        </div>
-                                    @endif
+                                    <livewire:admin.shared.image-field
+                                        wire:model="cta_background_image_path"
+                                        folder="cta"
+                                        label="CTA Background Image"
+                                        source="settings"
+                                        :key="'settings-cta'"
+                                    />
                                 </div>
                                 <div class="col-12 mb-3">
                                     <label class="form-label">CTA Title (single title)</label>
@@ -779,9 +736,18 @@
                                                         wire:model="headerImages.{{ $index }}"
                                                         accept="image/*"
                                                     >
+                                                    <small class="text-muted">Min 300KB · auto-resize to max 700KB</small>
                                                     @error('headerImages.' . $index)
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
+                                                    @if(isset($headerImages[$index]) && $headerImages[$index])
+                                                        <div class="small text-info mt-1">
+                                                            Selected: {{ number_format($headerImages[$index]->getSize() / 1024, 1) }} KB
+                                                            @if($headerImages[$index]->getSize() > 700 * 1024)
+                                                                → will resize to ≤700KB on save
+                                                            @endif
+                                                        </div>
+                                                    @endif
                                                 </div>
 
                                                 @if(isset($headerImages[$index]) && $headerImages[$index])

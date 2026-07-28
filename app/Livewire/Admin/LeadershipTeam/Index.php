@@ -3,15 +3,15 @@
 namespace App\Livewire\Admin\LeadershipTeam;
 
 use App\Models\LeadershipTeamMember;
+use App\Support\AdminImageUploader;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
-use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 #[Layout('layouts.admin')]
 class Index extends Component
 {
-    use WithFileUploads, WithPagination;
+    use WithPagination;
 
     public string $search = '';
     public ?int $editingId = null;
@@ -22,8 +22,7 @@ class Index extends Component
     public ?string $phone = null;
     public ?string $email = null;
     public ?string $biography = null;
-    public $profile_image;
-    public ?string $profile_image_path = null;
+    public ?string $profile_image = null;
     public bool $is_active = true;
     public ?int $sort_order = null;
 
@@ -35,7 +34,7 @@ class Index extends Component
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email', 'max:255'],
             'biography' => ['nullable', 'string'],
-            'profile_image' => ['nullable', 'image', 'max:2048'],
+            'profile_image' => ['nullable', 'string', 'max:500'],
             'is_active' => ['boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
@@ -62,8 +61,7 @@ class Index extends Component
         $this->phone = $member->phone ?? '';
         $this->email = $member->email ?? '';
         $this->biography = $member->biography ?? '';
-        $this->profile_image_path = $member->profile_image;
-        $this->profile_image = null;
+        $this->profile_image = $member->profile_image;
         $this->is_active = $member->is_active;
         $this->sort_order = $member->sort_order;
         $this->showFormModal = true;
@@ -79,23 +77,28 @@ class Index extends Component
     public function save(): void
     {
         $data = $this->validate();
+
+        if (! empty($data['profile_image'])) {
+            AdminImageUploader::registerExisting($data['profile_image'], 'leadership', 'leadership');
+        }
+
         $payload = [
             'full_name' => $data['full_name'],
             'position' => $data['position'],
             'phone' => $data['phone'] ?: null,
             'email' => $data['email'] ?: null,
             'biography' => $data['biography'] ?: null,
+            'profile_image' => $data['profile_image'] ?? null,
             'is_active' => $data['is_active'],
             'sort_order' => $data['sort_order'] ?? null,
         ];
 
-        if ($this->profile_image) {
-            $path = $this->profile_image->store('leadership', 'public');
-            $payload['profile_image'] = 'storage/' . $path;
-        }
-
         if ($this->editingId) {
-            LeadershipTeamMember::findOrFail($this->editingId)->update($payload);
+            $model = LeadershipTeamMember::findOrFail($this->editingId);
+            if (empty($payload['profile_image'])) {
+                unset($payload['profile_image']);
+            }
+            $model->update($payload);
             session()->flash('success', 'Leadership team member updated successfully.');
         } else {
             LeadershipTeamMember::create($payload);
@@ -124,7 +127,6 @@ class Index extends Component
         $this->email = null;
         $this->biography = null;
         $this->profile_image = null;
-        $this->profile_image_path = null;
         $this->is_active = true;
         $this->sort_order = null;
         $this->resetValidation();

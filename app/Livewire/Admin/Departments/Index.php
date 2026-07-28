@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Departments;
 
 use App\Models\ClinicalDepartment;
+use App\Support\AdminImageUploader;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -19,8 +20,7 @@ class Index extends Component
     public string $name = '';
     public string $slug = '';
     public ?string $description = null;
-    public $cover_image;
-    public ?string $cover_image_path = null;
+    public ?string $cover_image = null;
     public bool $is_active = true;
     public ?int $sort_order = null;
 
@@ -42,7 +42,7 @@ class Index extends Component
             'name' => ['required', 'string', 'max:255'],
             'slug' => $slugRule,
             'description' => ['nullable', 'string'],
-            'cover_image' => [$this->editingId ? 'nullable' : 'nullable', 'image', 'max:4096'],
+            'cover_image' => ['nullable', 'string', 'max:500'],
             'is_active' => ['boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
@@ -69,8 +69,7 @@ class Index extends Component
         $this->name = $dept->name;
         $this->slug = $dept->slug;
         $this->description = $dept->description ?? '';
-        $this->cover_image_path = $dept->cover_image;
-        $this->cover_image = null;
+        $this->cover_image = $dept->cover_image;
         $this->is_active = $dept->is_active;
         $this->sort_order = $dept->sort_order;
         $this->galleryDepartmentId = null;
@@ -88,21 +87,25 @@ class Index extends Component
     public function save(): void
     {
         $data = $this->validate();
+
+        if (! empty($data['cover_image'])) {
+            AdminImageUploader::registerExisting($data['cover_image'], 'departments', 'departments');
+        }
+
         $payload = [
             'name' => $data['name'],
             'slug' => $data['slug'],
             'description' => $data['description'] ?? null,
+            'cover_image' => $data['cover_image'] ?? null,
             'is_active' => $data['is_active'],
             'sort_order' => $data['sort_order'] ?? null,
         ];
 
-        if ($this->cover_image) {
-            $path = $this->cover_image->store('departments', 'public');
-            $payload['cover_image'] = 'storage/' . $path;
-        }
-
         if ($this->editingId) {
             $model = ClinicalDepartment::findOrFail($this->editingId);
+            if (empty($payload['cover_image'])) {
+                unset($payload['cover_image']);
+            }
             $model->update($payload);
             session()->flash('success', 'Department updated successfully.');
             $this->dispatch('swal', [
@@ -173,7 +176,7 @@ class Index extends Component
 
         $this->validate([
             'gallery_images' => ['required', 'array', 'min:1'],
-            'gallery_images.*' => ['required', 'image', 'max:4096'],
+            'gallery_images.*' => ['required', 'image', 'max:'.\App\Support\AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB],
         ]);
 
         $dept = ClinicalDepartment::findOrFail($this->galleryDepartmentId);
@@ -181,9 +184,15 @@ class Index extends Component
         $added = 0;
         foreach ($this->gallery_images as $file) {
             if (is_object($file) && method_exists($file, 'store')) {
-                $path = $file->store('departments/gallery', 'public');
-                $paths[] = 'storage/' . $path;
-                $added++;
+                try {
+                    $result = \App\Support\AdminImageUploader::store($file, 'departments/gallery', false, 'departments');
+                    $paths[] = $result['path'];
+                    $added++;
+                } catch (\Throwable $e) {
+                    $this->addError('gallery_images', $e->getMessage());
+
+                    return;
+                }
             }
         }
         $dept->update(['gallery' => json_encode($paths)]);
@@ -217,7 +226,6 @@ class Index extends Component
         $this->slug = '';
         $this->description = null;
         $this->cover_image = null;
-        $this->cover_image_path = null;
         $this->is_active = true;
         $this->sort_order = null;
         $this->resetValidation();

@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Services;
 
 use App\Models\ClinicalDepartment;
 use App\Models\ClinicalService;
+use App\Support\AdminImageUploader;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -22,8 +23,7 @@ class Index extends Component
     public string $title = '';
     public string $slug = '';
     public ?string $description = null;
-    public $cover_image;
-    public ?string $cover_image_path = null;
+    public ?string $cover_image = null;
     public bool $is_active = true;
     public ?int $sort_order = null;
 
@@ -42,7 +42,7 @@ class Index extends Component
             'title' => ['required', 'string', 'max:255'],
             'slug' => $slugRule,
             'description' => ['nullable', 'string'],
-            'cover_image' => ['nullable', 'image', 'max:4096'],
+            'cover_image' => ['nullable', 'string', 'max:500'],
             'is_active' => ['boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
@@ -75,8 +75,7 @@ class Index extends Component
         $this->title = $srv->title;
         $this->slug = $srv->slug;
         $this->description = $srv->description ?? '';
-        $this->cover_image_path = $srv->cover_image;
-        $this->cover_image = null;
+        $this->cover_image = $srv->cover_image;
         $this->is_active = $srv->is_active;
         $this->sort_order = $srv->sort_order;
         $this->galleryServiceId = null;
@@ -94,20 +93,27 @@ class Index extends Component
     public function save(): void
     {
         $data = $this->validate();
+
+        if (! empty($data['cover_image'])) {
+            AdminImageUploader::registerExisting($data['cover_image'], 'services', 'services');
+        }
+
         $payload = [
             'clinical_department_id' => $data['clinical_department_id'],
             'title' => $data['title'],
             'slug' => $data['slug'],
             'description' => $data['description'] ?? null,
+            'cover_image' => $data['cover_image'] ?? null,
             'is_active' => $data['is_active'],
             'sort_order' => $data['sort_order'] ?? null,
         ];
-        if ($this->cover_image) {
-            $path = $this->cover_image->store('services', 'public');
-            $payload['cover_image'] = 'storage/' . $path;
-        }
+
         if ($this->editingId) {
-            ClinicalService::findOrFail($this->editingId)->update($payload);
+            $model = ClinicalService::findOrFail($this->editingId);
+            if (empty($payload['cover_image'])) {
+                unset($payload['cover_image']);
+            }
+            $model->update($payload);
             session()->flash('success', 'Service updated successfully.');
             $this->dispatch('swal', [
                 'icon' => 'success',
@@ -174,7 +180,7 @@ class Index extends Component
 
         $this->validate([
             'gallery_images' => ['required', 'array', 'min:1'],
-            'gallery_images.*' => ['required', 'image', 'max:4096'],
+            'gallery_images.*' => ['required', 'image', 'max:'.\App\Support\AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB],
         ]);
 
         $srv = ClinicalService::findOrFail($this->galleryServiceId);
@@ -182,9 +188,15 @@ class Index extends Component
         $added = 0;
         foreach ($this->gallery_images as $file) {
             if (is_object($file) && method_exists($file, 'store')) {
-                $path = $file->store('services/gallery', 'public');
-                $paths[] = 'storage/' . $path;
-                $added++;
+                try {
+                    $result = \App\Support\AdminImageUploader::store($file, 'services/gallery', false, 'services');
+                    $paths[] = $result['path'];
+                    $added++;
+                } catch (\Throwable $e) {
+                    $this->addError('gallery_images', $e->getMessage());
+
+                    return;
+                }
             }
         }
         $srv->update(['gallery' => json_encode($paths)]);
@@ -218,7 +230,6 @@ class Index extends Component
         $this->slug = '';
         $this->description = null;
         $this->cover_image = null;
-        $this->cover_image_path = null;
         $this->is_active = true;
         $this->sort_order = null;
         $this->resetValidation();

@@ -3,21 +3,20 @@
 namespace App\Livewire\Admin\Partners;
 
 use App\Models\Partner;
+use App\Support\AdminImageUploader;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
-use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 #[Layout('layouts.admin')]
 class Index extends Component
 {
-    use WithFileUploads, WithPagination;
+    use WithPagination;
 
     public string $search = '';
     public ?int $editingId = null;
     public bool $showFormModal = false;
     public string $name = '';
-    public $logo;
     public ?string $logo_path = null;
     public ?string $website_url = null;
     public ?string $description = null;
@@ -29,10 +28,9 @@ class Index extends Component
 
     protected function rules(): array
     {
-        $logoRule = $this->editingId ? ['nullable', 'image', 'max:2048'] : ['required', 'image', 'max:2048'];
         return [
             'name' => ['required', 'string', 'max:255'],
-            'logo' => $logoRule,
+            'logo_path' => [$this->editingId ? 'nullable' : 'required', 'string', 'max:500'],
             'website_url' => ['nullable', 'url', 'max:255'],
             'description' => ['nullable', 'string'],
             'contact_person' => ['nullable', 'string', 'max:255'],
@@ -68,7 +66,6 @@ class Index extends Component
         $this->editingId = $p->id;
         $this->name = $p->name;
         $this->logo_path = $p->logo_path;
-        $this->logo = null;
         $this->website_url = $p->website_url ?? '';
         $this->description = $p->description ?? '';
         $this->contact_person = $p->contact_person ?? '';
@@ -82,8 +79,14 @@ class Index extends Component
     public function save(): void
     {
         $data = $this->validate();
+
+        if (! empty($data['logo_path'])) {
+            AdminImageUploader::registerExisting($data['logo_path'], 'partners', 'partners');
+        }
+
         $payload = [
             'name' => $data['name'],
+            'logo_path' => $data['logo_path'] ?? null,
             'website_url' => $data['website_url'] ?: null,
             'description' => $data['description'] ?: null,
             'contact_person' => $data['contact_person'] ?: null,
@@ -96,23 +99,19 @@ class Index extends Component
         } elseif (! $this->editingId) {
             $payload['sort_order'] = ((int) Partner::max('sort_order')) + 1;
         }
-        if ($this->logo) {
-            $path = $this->logo->store('partners', 'public');
-            $payload['logo_path'] = 'storage/' . $path;
-        }
+
         if ($this->editingId) {
             $model = Partner::findOrFail($this->editingId);
+            if (empty($payload['logo_path'])) {
+                unset($payload['logo_path']);
+            }
             $model->update($payload);
-            $this->logo_path = $model->logo_path;
             session()->flash('success', 'Partner updated successfully.');
         } else {
-            if (empty($payload['logo_path'])) {
-                session()->flash('error', 'Logo is required when creating a partner.');
-                return;
-            }
             Partner::create($payload);
             session()->flash('success', 'Partner created successfully.');
         }
+
         $this->resetForm();
         $this->editingId = null;
         $this->showFormModal = false;
@@ -130,7 +129,6 @@ class Index extends Component
     protected function resetForm(): void
     {
         $this->name = '';
-        $this->logo = null;
         $this->logo_path = null;
         $this->website_url = null;
         $this->description = null;

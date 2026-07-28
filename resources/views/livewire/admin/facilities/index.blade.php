@@ -88,14 +88,14 @@
                                 @error('description') <small class="text-danger">{{ $message }}</small> @enderror
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Image</label>
-                                <input type="file" class="form-control" wire:model="image" accept="image/*">
-                                @error('image') <small class="text-danger">{{ $message }}</small> @enderror
-                                @if($image)
-                                    <img src="{{ $image->temporaryUrl() }}" alt="Preview" class="img-fluid rounded mt-2" style="max-height: 100px;">
-                                @elseif($image_path)
-                                    <img src="{{ asset($image_path) }}" alt="Current" class="img-fluid rounded mt-2" style="max-height: 100px;">
-                                @endif
+                                <livewire:admin.shared.image-field
+                                    wire:model="image_path"
+                                    folder="facilities"
+                                    label="Image"
+                                    source="facilities"
+                                    :key="'facility-img-'.($editingId ?? 'new')"
+                                />
+                                @error('image_path') <small class="text-danger">{{ $message }}</small> @enderror
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Sort Order</label>

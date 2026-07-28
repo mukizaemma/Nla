@@ -99,14 +99,14 @@
                     <div class="modal-body">
                         <form wire:submit.prevent="save" id="leadership-form">
                             <div class="mb-3">
-                                <label class="form-label">Profile Image</label>
-                                <input type="file" class="form-control" wire:model="profile_image" accept="image/*">
+                                <livewire:admin.shared.image-field
+                                    wire:model="profile_image"
+                                    folder="leadership"
+                                    label="Profile Image"
+                                    source="leadership"
+                                    :key="'leadership-img-'.($editingId ?? 'new')"
+                                />
                                 @error('profile_image') <small class="text-danger">{{ $message }}</small> @enderror
-                                @if($profile_image)
-                                    <img src="{{ $profile_image->temporaryUrl() }}" alt="Preview" class="rounded-circle mt-2 border" style="height: 80px; width: 80px; object-fit: cover;">
-                                @elseif($profile_image_path)
-                                    <img src="{{ asset($profile_image_path) }}" alt="Current" class="rounded-circle mt-2 border" style="height: 80px; width: 80px; object-fit: cover;">
-                                @endif
                             </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
