@@ -43,10 +43,14 @@ class AdminImageUploader
             }
 
             if (! $allowSmall && $originalBytes < self::MIN_BYTES) {
-                throw new RuntimeException(
-                    'Image is too small ('.self::formatBytes($originalBytes).'). '
-                    .'Please upload an image of at least 400KB (logos may be smaller).'
-                );
+                // Allow under-min only when the file is already within the max cap
+                // (browser may compress a huge photo slightly under 400KB).
+                if ($originalBytes > self::MAX_BYTES || $originalBytes < 32 * 1024) {
+                    throw new RuntimeException(
+                        'Image is too small ('.self::formatBytes($originalBytes).'). '
+                        .'Please upload an image of at least 400KB (logos may be smaller).'
+                    );
+                }
             }
 
             $processed = self::processToTargetRange($realPath, $originalBytes);
@@ -116,7 +120,7 @@ class AdminImageUploader
             $realPath = $local['path'];
             $originalBytes = is_readable($realPath) ? (int) filesize($realPath) : (int) $file->getSize();
 
-            if (! $allowSmall && $originalBytes < self::MIN_BYTES) {
+            if (! $allowSmall && $originalBytes < 32 * 1024) {
                 return [
                     'original_bytes' => $originalBytes,
                     'final_bytes' => $originalBytes,
@@ -296,29 +300,39 @@ class AdminImageUploader
             ];
         }
 
-        // 1) macOS sips (best for huge / HEIC / CMYK)
-        $sips = self::compressWithSips($realPath);
-        if ($sips !== null) {
-            return $sips;
+        // Order matters for production Linux (DigitalOcean): GD → ImageMagick → macOS sips.
+        $attempts = [
+            'gd' => fn () => self::compressWithGd($realPath),
+            'imagick' => fn () => self::compressWithImagick($realPath),
+            'imagemagick_cli' => fn () => self::compressWithImageMagickCli($realPath),
+            'sips' => fn () => self::compressWithSips($realPath),
+        ];
+
+        foreach ($attempts as $engine => $attempt) {
+            try {
+                $result = $attempt();
+                if ($result !== null) {
+                    return $result;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Image compress engine failed', [
+                    'engine' => $engine,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
-        // 2) GD with unlimited memory
-        $gd = self::compressWithGd($realPath);
-        if ($gd !== null) {
-            return $gd;
-        }
-
-        // 3) Force convert via sips to a plain JPEG, then GD again
-        $converted = self::forceJpegViaSips($realPath);
+        // Last resort: convert to JPEG via CLI, then GD again.
+        $converted = self::forceJpegViaCli($realPath);
         if ($converted) {
             try {
-                $sips = self::compressWithSips($converted);
-                if ($sips !== null) {
-                    return $sips;
-                }
                 $gd = self::compressWithGd($converted);
                 if ($gd !== null) {
                     return $gd;
+                }
+                $imagick = self::compressWithImagick($converted);
+                if ($imagick !== null) {
+                    return $imagick;
                 }
             } finally {
                 @unlink($converted);
@@ -328,15 +342,272 @@ class AdminImageUploader
         Log::warning('Admin image resize failed', [
             'bytes' => $originalBytes,
             'format' => self::detectFormat($realPath),
+            'gd' => extension_loaded('gd'),
+            'imagick' => extension_loaded('imagick'),
+            'magick' => self::imageMagickBinary(),
             'sips' => self::sipsBinary(),
             'exec' => function_exists('exec'),
-            'gd' => extension_loaded('gd'),
+            'memory_limit' => ini_get('memory_limit'),
         ]);
 
         throw new RuntimeException(
             'Could not resize this image ('.self::formatBytes($originalBytes).') into 400–700KB. '
-            .'Please try another JPG/PNG, or re-export it from Preview as JPEG.'
+            .'On the server, ensure PHP GD is installed (php-gd) and nginx allows uploads '
+            .'(client_max_body_size 20M). Or re-export as JPG from Preview and try again.'
         );
+    }
+
+    /**
+     * @return array{binary: string, bytes: int, mime: string, width: int|null, height: int|null, was_resized: bool}|null
+     */
+    protected static function compressWithImagick(string $path): ?array
+    {
+        if (! extension_loaded('imagick') || ! class_exists(\Imagick::class)) {
+            return null;
+        }
+
+        try {
+            $image = new \Imagick($path);
+            if (method_exists($image, 'autoOrient')) {
+                $image->autoOrient();
+            } elseif (method_exists($image, 'autoOrientImage')) {
+                @$image->autoOrientImage();
+            }
+
+            $image->setImageBackgroundColor('white');
+            try {
+                if (method_exists($image, 'getImageAlphaChannel') && $image->getImageAlphaChannel()) {
+                    if (defined('Imagick::ALPHACHANNEL_REMOVE')) {
+                        $image->setImageAlphaChannel(\Imagick::ALPHACHANNEL_REMOVE);
+                    }
+                    if (defined('Imagick::LAYERMETHOD_FLATTEN')) {
+                        $image->mergeImageLayers(\Imagick::LAYERMETHOD_FLATTEN);
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Some builds lack alpha APIs — ignore.
+            }
+
+            $image->setImageFormat('jpeg');
+            $image->setImageCompression(\Imagick::COMPRESSION_JPEG);
+            $image->stripImage();
+
+            $width = $image->getImageWidth();
+            $height = $image->getImageHeight();
+            $maxEdge = 1920;
+            if (max($width, $height) > $maxEdge) {
+                $image->thumbnailImage(
+                    $width >= $height ? $maxEdge : 0,
+                    $height > $width ? $maxEdge : 0,
+                    true
+                );
+            }
+
+            $qualities = [85, 75, 65, 55, 45, 35, 25];
+            $bestUnderMax = null;
+
+            foreach ([1.0, 0.85, 0.7, 0.55] as $scale) {
+                $work = clone $image;
+                if ($scale < 1.0) {
+                    $w = max(1, (int) round($work->getImageWidth() * $scale));
+                    $h = max(1, (int) round($work->getImageHeight() * $scale));
+                    $work->resizeImage($w, $h, \Imagick::FILTER_LANCZOS, 1);
+                }
+
+                foreach ($qualities as $quality) {
+                    $frame = clone $work;
+                    $frame->setImageCompressionQuality($quality);
+                    $binary = $frame->getImageBlob();
+                    $frame->clear();
+                    $frame->destroy();
+
+                    $bytes = strlen($binary);
+                    if ($bytes > self::MAX_BYTES) {
+                        continue;
+                    }
+
+                    $candidate = [
+                        'binary' => $binary,
+                        'bytes' => $bytes,
+                        'mime' => 'image/jpeg',
+                        'width' => $work->getImageWidth(),
+                        'height' => $work->getImageHeight(),
+                        'was_resized' => true,
+                    ];
+
+                    if ($bytes >= self::MIN_BYTES) {
+                        $work->clear();
+                        $work->destroy();
+                        $image->clear();
+                        $image->destroy();
+
+                        return $candidate;
+                    }
+
+                    if ($bestUnderMax === null || $bytes > $bestUnderMax['bytes']) {
+                        $bestUnderMax = $candidate;
+                    }
+
+                    break;
+                }
+
+                $work->clear();
+                $work->destroy();
+                if ($bestUnderMax !== null) {
+                    break;
+                }
+            }
+
+            $image->clear();
+            $image->destroy();
+
+            return $bestUnderMax;
+        } catch (\Throwable $e) {
+            Log::warning('Imagick compress failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return array{binary: string, bytes: int, mime: string, width: int|null, height: int|null, was_resized: bool}|null
+     */
+    protected static function compressWithImageMagickCli(string $path): ?array
+    {
+        $bin = self::imageMagickBinary();
+        if ($bin === null || ! is_readable($path) || ! function_exists('exec')) {
+            return null;
+        }
+
+        $edges = [1920, 1600, 1280, 1024, 800, 640];
+        $qualities = [85, 75, 65, 55, 45, 35];
+        $bestUnderMax = null;
+
+        foreach ($edges as $edge) {
+            foreach ($qualities as $quality) {
+                $target = self::tempDir().'/'.Str::uuid().'.jpg';
+                if (! self::runImageMagickCommand($path, $target, $edge, $quality)) {
+                    @unlink($target);
+                    continue;
+                }
+
+                $bytes = (int) filesize($target);
+                if ($bytes < 32 || self::detectFormat($target) !== 'jpeg' || $bytes > self::MAX_BYTES) {
+                    @unlink($target);
+                    continue;
+                }
+
+                $binary = (string) file_get_contents($target);
+                $info = @getimagesize($target);
+                @unlink($target);
+
+                $candidate = [
+                    'binary' => $binary,
+                    'bytes' => strlen($binary),
+                    'mime' => 'image/jpeg',
+                    'width' => is_array($info) ? ($info[0] ?? null) : null,
+                    'height' => is_array($info) ? ($info[1] ?? null) : null,
+                    'was_resized' => true,
+                ];
+
+                if ($candidate['bytes'] >= self::MIN_BYTES) {
+                    return $candidate;
+                }
+
+                if ($bestUnderMax === null || $candidate['bytes'] > $bestUnderMax['bytes']) {
+                    $bestUnderMax = $candidate;
+                }
+
+                break 2;
+            }
+        }
+
+        return $bestUnderMax;
+    }
+
+    protected static function runImageMagickCommand(string $input, string $output, int $maxEdge, int $quality): bool
+    {
+        $bin = self::imageMagickBinary();
+        if ($bin === null) {
+            return false;
+        }
+
+        // `magick input -resize ... output` (IM7) or `convert input ... output` (IM6)
+        $isMagick = str_ends_with($bin, 'magick');
+        $cmd = escapeshellarg($bin);
+        if ($isMagick) {
+            $cmd .= ' '.escapeshellarg($input);
+        } else {
+            $cmd .= ' '.escapeshellarg($input);
+        }
+
+        $cmd .= ' -auto-orient'
+            .' -resize '.escapeshellarg($maxEdge.'x'.$maxEdge.'>')
+            .' -quality '.escapeshellarg((string) $quality)
+            .' -strip'
+            .' '.escapeshellarg($output)
+            .' 2>&1';
+
+        $lines = [];
+        $code = 1;
+        @exec($cmd, $lines, $code);
+
+        return is_file($output) && filesize($output) > 32 && self::detectFormat($output) === 'jpeg';
+    }
+
+    protected static function forceJpegViaCli(string $path): ?string
+    {
+        $target = self::tempDir().'/'.Str::uuid().'.jpg';
+
+        if (self::runImageMagickCommand($path, $target, 1920, 80)) {
+            return $target;
+        }
+
+        if (self::runSipsCommand($path, $target, 1920, 80)) {
+            return $target;
+        }
+
+        @unlink($target);
+
+        return null;
+    }
+
+    protected static function imageMagickBinary(): ?string
+    {
+        static $cached;
+        if ($cached !== null) {
+            return $cached ?: null;
+        }
+
+        $candidates = [
+            '/usr/bin/magick',
+            '/usr/local/bin/magick',
+            '/usr/bin/convert',
+            '/usr/local/bin/convert',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_executable($candidate)) {
+                $cached = $candidate;
+
+                return $cached;
+            }
+        }
+
+        if (function_exists('shell_exec')) {
+            foreach (['magick', 'convert'] as $name) {
+                $path = trim((string) @shell_exec('command -v '.escapeshellarg($name).' 2>/dev/null'));
+                if ($path !== '' && is_executable($path)) {
+                    $cached = $path;
+
+                    return $cached;
+                }
+            }
+        }
+
+        $cached = '';
+
+        return null;
     }
 
     /**
@@ -432,18 +703,6 @@ class AdminImageUploader
 
         // Accept a valid JPEG even if sips returned a non-zero status (macOS warnings).
         return is_file($output) && filesize($output) > 32 && self::detectFormat($output) === 'jpeg';
-    }
-
-    protected static function forceJpegViaSips(string $path): ?string
-    {
-        $target = self::tempDir().'/'.Str::uuid().'.jpg';
-        if (! self::runSipsCommand($path, $target, 1920, 80)) {
-            @unlink($target);
-
-            return null;
-        }
-
-        return $target;
     }
 
     /**
