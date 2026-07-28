@@ -2,10 +2,12 @@
 
 namespace App\Livewire\Frontend;
 
+use App\Mail\StudentRegistrationReceived;
 use App\Mail\StudentRegistrationSubmitted;
 use App\Models\PageHeader;
 use App\Models\StudentRegistration;
 use App\Models\WebsiteSetting;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Validation\Rule;
@@ -141,6 +143,21 @@ class Appointment extends Component
         ]);
 
         $this->validateContactForChannel();
+        if ($this->getErrorBag()->isNotEmpty()) {
+            return;
+        }
+
+        $settings = WebsiteSetting::first();
+        $schoolName = $settings?->company_name ?? config('app.name');
+
+        if ($this->submission_channel === 'whatsapp') {
+            $waNumber = preg_replace('/[^0-9]/', '', $settings->phone_whatsapp ?? $settings->phone_reception ?? '');
+            if (! $waNumber) {
+                $this->addError('submission_channel', 'WhatsApp registration is temporarily unavailable. Please choose Email or contact the school.');
+
+                return;
+            }
+        }
 
         $reportPath = null;
         if ($this->previous_school_report) {
@@ -156,19 +173,26 @@ class Appointment extends Component
                 'date_of_birth' => $this->date_of_birth ?: null,
                 'primary_contact' => $this->contact_relationship,
                 'submission_channel' => $this->submission_channel,
+                'status' => StudentRegistration::STATUS_PENDING,
                 'previous_school_name' => $this->from_other_school ? ($this->previous_school_name ?: null) : null,
                 'previous_school_report_path' => $this->from_other_school ? $reportPath : null,
             ],
             $this->contactAttributesForStorage(),
         ));
 
+        // Always notify the school so every application appears for admin review.
+        $this->notifySchoolOfRegistration($registration, $settings);
+
         if ($this->submission_channel === 'email') {
-            $settings = WebsiteSetting::first();
-            if ($settings?->email) {
-                Mail::to($settings->email)->send(new StudentRegistrationSubmitted($registration));
-            }
             if ($this->contact_email) {
-                Mail::to($this->contact_email)->send(new StudentRegistrationSubmitted($registration));
+                try {
+                    Mail::to($this->contact_email)->send(new StudentRegistrationReceived($registration, $schoolName));
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to send parent registration acknowledgement', [
+                        'registration_id' => $registration->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
 
             $this->submitted = true;
@@ -177,26 +201,37 @@ class Appointment extends Component
             $this->dispatch('swal', [
                 'icon' => 'success',
                 'title' => 'Registration received',
-                'text' => 'We have saved your application and sent a confirmation by email.',
+                'text' => 'We saved your application and emailed you a confirmation. A decision will be shared soon.',
             ]);
 
             return;
         }
 
-        $settings = WebsiteSetting::first();
         $waNumber = preg_replace('/[^0-9]/', '', $settings->phone_whatsapp ?? $settings->phone_reception ?? '');
-        if (! $waNumber) {
-            $this->addError('submission_channel', 'WhatsApp registration is temporarily unavailable. Please choose Email or contact the school.');
-
-            return;
-        }
-
         $message = $this->buildWhatsAppMessage($registration);
         $waUrl = 'https://wa.me/' . $waNumber . '?text=' . rawurlencode($message);
 
+        $this->submitted = true;
         $this->resetForm();
 
         $this->redirect($waUrl, navigate: false);
+    }
+
+    protected function notifySchoolOfRegistration(StudentRegistration $registration, ?WebsiteSetting $settings): void
+    {
+        $adminEmail = $settings?->email;
+        if (! $adminEmail) {
+            return;
+        }
+
+        try {
+            Mail::to($adminEmail)->send(new StudentRegistrationSubmitted($registration));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send admin registration notification', [
+                'registration_id' => $registration->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /** @return array<string, mixed> */
@@ -279,13 +314,23 @@ class Appointment extends Component
 
     protected function buildWhatsAppMessage(StudentRegistration $registration): string
     {
-        $school = WebsiteSetting::first()?->company_name ?? 'New Life Christian Academy';
+        $school = WebsiteSetting::first()?->company_name ?? config('app.name');
+        $dob = $registration->date_of_birth
+            ? $registration->date_of_birth->format('j F Y')
+            : 'Not provided';
+        $previous = $this->from_other_school
+            ? ($this->previous_school_name ?: 'Yes (name not provided)')
+            : 'No (new to school)';
 
         return "Hello {$school},\n\n"
             . "I am submitting a student registration via your website.\n\n"
             . "Student: {$registration->student_full_name}\n"
             . "Level: {$registration->academic_level}\n"
-            . "Contact: {$this->contactRelationshipLabel()} — {$this->contact_full_name}\n\n"
+            . "Date of birth: {$dob}\n"
+            . "Previous school: {$previous}\n"
+            . "Contact: {$this->contactRelationshipLabel()} — {$this->contact_full_name}\n"
+            . "Email: {$this->contact_email}\n"
+            . "Phone / WhatsApp: {$this->contact_phone}\n\n"
             . "Please confirm receipt of this application. Thank you.";
     }
 

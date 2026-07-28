@@ -216,7 +216,7 @@ class SiteContent
                 'fallback_sidebar' => 'Registration is now open. Complete the form to start the admission process and learn about the ACE Diagnostic Test.',
                 'submission_help' => 'Choose one option. We save your application in our system, then continue via WhatsApp or email.',
                 'whatsapp_help' => 'Opens WhatsApp with a summary — you must have WhatsApp on the phone number entered above.',
-                'email_help' => 'Sends confirmation to the school and to your primary contact email.',
+                'email_help' => 'Emails the school and sends you a receipt. Confirmation of admission will follow soon.',
             ],
         ];
     }

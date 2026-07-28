@@ -235,6 +235,13 @@
                         text: data.text || ''
                     });
                 });
+
+                Livewire.on('open-url', (payload = {}) => {
+                    const url = payload?.url || (Array.isArray(payload) ? payload[0]?.url : null);
+                    if (url) {
+                        window.open(url, '_blank', 'noopener');
+                    }
+                });
             }
         });
 
