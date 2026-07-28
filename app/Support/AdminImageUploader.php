@@ -268,6 +268,14 @@ class AdminImageUploader
     {
         self::raiseMemoryLimit();
 
+        // Prefer macOS sips for large / stubborn images (handles CMYK, huge phone JPEGs, HEIC).
+        if ($originalBytes > self::MAX_BYTES || ! self::canGdLoad($realPath)) {
+            $sipsResult = self::compressWithSips($realPath);
+            if ($sipsResult !== null) {
+                return $sipsResult;
+            }
+        }
+
         $workingPath = self::ensureGdReadable($realPath);
         $cleanupWorking = $workingPath !== $realPath ? $workingPath : null;
 
@@ -286,7 +294,6 @@ class AdminImageUploader
                 ];
             }
 
-            // Re-check size after possible HEIC→JPEG conversion.
             $workingBytes = (int) filesize($workingPath);
             if ($workingBytes <= self::MAX_BYTES) {
                 $binary = (string) file_get_contents($workingPath);
@@ -304,23 +311,28 @@ class AdminImageUploader
 
             $image = self::loadGdImage($workingPath);
             if (! $image) {
-                $format = self::detectFormat($workingPath);
+                // Last resort: sips again after GD prep failed.
+                $sipsResult = self::compressWithSips($workingPath) ?? self::compressWithSips($realPath);
+                if ($sipsResult !== null) {
+                    return $sipsResult;
+                }
+
+                $format = self::detectFormat($workingPath) ?: self::detectFormat($realPath);
                 \Log::warning('Admin image processing failed', [
                     'format' => $format,
                     'bytes' => $originalBytes,
                     'path' => basename($realPath),
+                    'sips' => self::sipsBinary(),
                 ]);
                 throw new RuntimeException(
-                    'Unable to process this image'
-                    .($format ? " (detected: {$format})" : '')
-                    .'. Please export it as a standard JPG or PNG and try again.'
+                    'Could not resize this JPEG/PNG ('.self::formatBytes($originalBytes).'). '
+                    .'Try a smaller image, or re-export it from Photos/Preview as JPEG.'
                 );
             }
 
             $width = imagesx($image);
             $height = imagesy($image);
 
-            // Cap starting dimensions so huge phone photos compress reliably.
             $maxEdge = 1920;
             $scale = 1.0;
             if (max($width, $height) > $maxEdge) {
@@ -393,6 +405,78 @@ class AdminImageUploader
     }
 
     /**
+     * Resize + compress with macOS sips (no GD decode required).
+     *
+     * @return array{binary: string, bytes: int, mime: string, width: int|null, height: int|null, was_resized: bool}|null
+     */
+    protected static function compressWithSips(string $path): ?array
+    {
+        $sips = self::sipsBinary();
+        if ($sips === null || ! is_readable($path)) {
+            return null;
+        }
+
+        $edges = [1920, 1600, 1280, 1024, 800];
+        $qualities = [70, 60, 50, 40, 30];
+
+        foreach ($edges as $edge) {
+            foreach ($qualities as $quality) {
+                $out = tempnam(sys_get_temp_dir(), 'nlacomp_');
+                if ($out === false) {
+                    return null;
+                }
+                $target = $out.'.jpg';
+                @unlink($out);
+
+                $cmd = escapeshellarg($sips)
+                    .' -s format jpeg'
+                    .' -s formatOptions '.escapeshellarg((string) $quality)
+                    .' --resampleHeightWidthMax '.escapeshellarg((string) $edge).' '
+                    .escapeshellarg($path)
+                    .' --out '
+                    .escapeshellarg($target)
+                    .' 2>&1';
+
+                $output = [];
+                $code = 0;
+                exec($cmd, $output, $code);
+
+                if ($code !== 0 || ! is_file($target) || filesize($target) < 32) {
+                    @unlink($target);
+                    continue;
+                }
+
+                // Accept by magic bytes — do not require GD (avoids memory false-negatives).
+                if (self::detectFormat($target) !== 'jpeg') {
+                    @unlink($target);
+                    continue;
+                }
+
+                $bytes = (int) filesize($target);
+                if ($bytes > self::MAX_BYTES) {
+                    @unlink($target);
+                    continue;
+                }
+
+                $binary = (string) file_get_contents($target);
+                $info = @getimagesize($target);
+                @unlink($target);
+
+                return [
+                    'binary' => $binary,
+                    'bytes' => strlen($binary),
+                    'mime' => 'image/jpeg',
+                    'width' => is_array($info) ? ($info[0] ?? null) : null,
+                    'height' => is_array($info) ? ($info[1] ?? null) : null,
+                    'was_resized' => true,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Make sure the file is in a format GD can decode (convert HEIC/etc. on macOS via sips).
      * Also downscales very large images via sips first so PHP/GD does not run out of memory.
      */
@@ -402,7 +486,11 @@ class AdminImageUploader
 
         if (! self::canGdLoad($working)) {
             $format = self::detectFormat($working);
-            $converted = self::convertWithSips($working, 'jpeg');
+            $converted = self::runSips($working, [
+                '-s', 'format', 'jpeg',
+                '-s', 'formatOptions', '80',
+                '--resampleHeightWidthMax', '1920',
+            ]);
             if ($converted) {
                 $working = $converted;
             } elseif ($format === 'heic' || $format === 'heif') {
@@ -413,13 +501,16 @@ class AdminImageUploader
             }
         }
 
-        // Pre-downscale huge photos with sips (avoids PHP memory exhaustion on 12–48MP images).
         $info = @getimagesize($working);
-        if (is_array($info)) {
+        if (is_array($info) && (int) filesize($working) > self::MAX_BYTES) {
             $w = (int) ($info[0] ?? 0);
             $h = (int) ($info[1] ?? 0);
             if (max($w, $h) > 2200) {
-                $resized = self::resampleWithSips($working, 1920);
+                $resized = self::runSips($working, [
+                    '-s', 'format', 'jpeg',
+                    '-s', 'formatOptions', '80',
+                    '--resampleHeightWidthMax', '1920',
+                ]);
                 if ($resized) {
                     if ($working !== $path && is_file($working)) {
                         @unlink($working);
@@ -432,75 +523,40 @@ class AdminImageUploader
         return $working;
     }
 
-    protected static function convertWithSips(string $path, string $format = 'jpeg'): ?string
+    /**
+     * @param  list<string>  $args
+     */
+    protected static function runSips(string $path, array $args): ?string
     {
         $sips = self::sipsBinary();
         if ($sips === null) {
             return null;
         }
 
-        $ext = $format === 'jpeg' ? 'jpg' : $format;
         $out = tempnam(sys_get_temp_dir(), 'nlasips_');
-        if ($out === false) {
-            return null;
-        }
-        $target = $out.'.'.$ext;
-        @unlink($out);
-
-        $cmd = escapeshellarg($sips)
-            .' -s format '.escapeshellarg($format).' '
-            .escapeshellarg($path)
-            .' --out '
-            .escapeshellarg($target)
-            .' 2>&1';
-
-        exec($cmd, $output, $code);
-        if ($code !== 0 || ! is_file($target) || filesize($target) < 32) {
-            @unlink($target);
-
-            return null;
-        }
-
-        if (! self::canGdLoad($target)) {
-            @unlink($target);
-
-            return null;
-        }
-
-        return $target;
-    }
-
-    protected static function resampleWithSips(string $path, int $maxEdge): ?string
-    {
-        $sips = self::sipsBinary();
-        if ($sips === null) {
-            return null;
-        }
-
-        $out = tempnam(sys_get_temp_dir(), 'nlaresample_');
         if ($out === false) {
             return null;
         }
         $target = $out.'.jpg';
         @unlink($out);
 
-        // Convert + resample in one pass when possible.
-        $cmd = escapeshellarg($sips)
-            .' -s format jpeg'
-            .' --resampleHeightWidthMax '.escapeshellarg((string) $maxEdge).' '
-            .escapeshellarg($path)
-            .' --out '
-            .escapeshellarg($target)
-            .' 2>&1';
+        $cmd = escapeshellarg($sips);
+        foreach ($args as $arg) {
+            $cmd .= ' '.escapeshellarg($arg);
+        }
+        $cmd .= ' '.escapeshellarg($path).' --out '.escapeshellarg($target).' 2>&1';
 
+        $output = [];
+        $code = 0;
         exec($cmd, $output, $code);
+
         if ($code !== 0 || ! is_file($target) || filesize($target) < 32) {
             @unlink($target);
 
             return null;
         }
 
-        if (! self::canGdLoad($target)) {
+        if (self::detectFormat($target) !== 'jpeg') {
             @unlink($target);
 
             return null;
@@ -516,10 +572,17 @@ class AdminImageUploader
             return $cached ?: null;
         }
 
-        $path = trim((string) shell_exec('command -v sips 2>/dev/null'));
-        $cached = $path !== '' ? $path : '';
+        foreach (['/usr/bin/sips', trim((string) shell_exec('command -v sips 2>/dev/null'))] as $candidate) {
+            if ($candidate !== '' && is_executable($candidate)) {
+                $cached = $candidate;
 
-        return $cached ?: null;
+                return $cached;
+            }
+        }
+
+        $cached = '';
+
+        return null;
     }
 
     protected static function canGdLoad(string $path): bool

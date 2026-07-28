@@ -52,10 +52,14 @@ class ImageField extends Component
         $this->validate([
             'upload' => [
                 'required',
-                'image',
+                'file',
                 'mimes:jpg,jpeg,png,gif,webp,bmp',
+                'mimetypes:image/jpeg,image/pjpeg,image/png,image/gif,image/webp,image/bmp,image/x-ms-bmp',
                 'max:'.AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB,
             ],
+        ], [
+            'upload.mimes' => 'Please upload a JPG, JPEG, PNG, WEBP, GIF, or BMP image.',
+            'upload.mimetypes' => 'Please upload a JPG, JPEG, PNG, WEBP, GIF, or BMP image.',
         ]);
 
         $preview = AdminImageUploader::preview($this->upload, $this->allowSmall);
