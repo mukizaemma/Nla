@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="description" content="{{ ($websiteSettings->company_name ?? config('app.name')) . ' — ' . ($siteContent['global']['meta_description'] ?? '') }}">
-    <title>@yield('title', $websiteSettings->company_name ?? config('app.name'))</title>
+    <meta name="description" content="{{ (($websiteSettings ?? null)?->company_name ?? config('app.name')) . ' — ' . (($siteContent ?? [])['global']['meta_description'] ?? '') }}">
+    <title>@yield('title', ($websiteSettings ?? null)?->company_name ?? config('app.name'))</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,6 +29,9 @@
 
     <div class="container">
         @php
+            $websiteSettings = $websiteSettings ?? \App\Models\WebsiteSetting::first() ?? new \App\Models\WebsiteSetting;
+            $siteContent = $siteContent ?? \App\Support\SiteContent::for($websiteSettings);
+            $footerPartners = $footerPartners ?? collect();
             $schoolName = $websiteSettings->company_name ?? config('app.name');
             $phone = $websiteSettings->phone_reception ?? $websiteSettings->phone_urgency ?? '+250 786 900 580';
             $email = $websiteSettings->email ?? 'info@nla.ac.rw';
