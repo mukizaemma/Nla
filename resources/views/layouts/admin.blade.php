@@ -33,6 +33,13 @@
     @stack('styles')
 </head>
 <body>
+    @php
+        $adminSiteSettings = \App\Models\WebsiteSetting::first();
+        $adminBrandShort = 'NLA';
+        $adminAvatar = ($adminSiteSettings?->logo_path)
+            ? asset($adminSiteSettings->logo_path)
+            : asset('templates/admin/img/user.jpg');
+    @endphp
     <div class="container-xxl position-relative bg-white d-flex p-0">
         <!-- Spinner Start -->
         <div id="spinner" class="show bg-white position-fixed translate-middle w-100 vh-100 top-50 start-50 d-flex align-items-center justify-content-center">
@@ -46,11 +53,11 @@
         <div class="sidebar pe-4 pb-3">
             <nav class="navbar bg-light navbar-light">
                 <a href="{{ route('admin.dashboard') }}" class="navbar-brand mx-4 mb-3">
-                    <h3 class="text-primary"><i class="fa fa-hashtag me-2"></i>{{ config('app.name') }}</h3>
+                    <h3 class="text-primary"><i class="fa fa-hashtag me-2"></i>{{ $adminBrandShort }}</h3>
                 </a>
                 <div class="d-flex align-items-center ms-4 mb-4">
                     <div class="position-relative">
-                        <img class="rounded-circle" src="{{ asset('templates/admin/img/user.jpg') }}" alt="" style="width: 40px; height: 40px;">
+                        <img class="rounded-circle bg-white" src="{{ $adminAvatar }}" alt="{{ Auth::user()->name }}" style="width: 40px; height: 40px; object-fit: contain; padding: 2px;">
                         <div class="bg-success rounded-circle border border-2 border-white position-absolute end-0 bottom-0 p-1"></div>
                     </div>
                     <div class="ms-3">
@@ -130,7 +137,7 @@
             <!-- Navbar Start -->
             <nav class="navbar navbar-expand bg-light navbar-light sticky-top px-4 py-0">
                 <a href="{{ route('admin.dashboard') }}" class="navbar-brand d-flex d-lg-none me-4">
-                    <h2 class="text-primary mb-0"><i class="fa fa-hashtag"></i></h2>
+                    <h2 class="text-primary mb-0">{{ $adminBrandShort }}</h2>
                 </a>
                 <a href="#" class="sidebar-toggler flex-shrink-0">
                     <i class="fa fa-bars"></i>
@@ -141,7 +148,7 @@
                 <div class="navbar-nav align-items-center ms-auto">
                     <div class="nav-item dropdown">
                         <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
-                            <img class="rounded-circle me-lg-2" src="{{ asset('templates/admin/img/user.jpg') }}" alt="" style="width: 40px; height: 40px;">
+                            <img class="rounded-circle me-lg-2 bg-white" src="{{ $adminAvatar }}" alt="{{ Auth::user()->name }}" style="width: 40px; height: 40px; object-fit: contain; padding: 2px;">
                             <span class="d-none d-lg-inline-flex">{{ Auth::user()->name }}</span>
                         </a>
                         <div class="dropdown-menu dropdown-menu-end bg-light border-0 rounded-0 rounded-bottom m-0">
