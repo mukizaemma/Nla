@@ -53,9 +53,6 @@
                     <div class="hero-slide__overlay"></div>
                     <div class="hero-slide__content">
                         <h1 class="hero-slide__caption">{!! $slide->caption ?? $slide->title ?? optional($settings)->company_name !!}</h1>
-                        @if($i === 0 && !empty($h['overview_fallback']))
-                            <p class="hero-slide__desc">{{ $h['overview_fallback'] }}</p>
-                        @endif
                         <div class="hero-slide__actions">
                             @php
                                 $primaryText = $slide->button_text ?: ($h['hero_primary_text'] ?? 'Register');
