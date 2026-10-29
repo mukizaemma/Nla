@@ -28,7 +28,7 @@ return new class extends Migration
             $table->string('phone_billing')->nullable();
             $table->string('phone_restaurant')->nullable();
 
-            $table->string('address')->nullable();
+            $table->text('address')->nullable();
 
             $table->longText('mission')->nullable();
             $table->longText('vision')->nullable();

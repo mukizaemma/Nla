@@ -17,9 +17,20 @@
 </head>
 <body class="font-sans antialiased">
     <div class="min-h-screen">
+        @include('partials.form-error')
         {{ $slot }}
     </div>
 
     @livewireScripts
+    <script>
+        document.addEventListener('livewire:init', function () {
+            Livewire.on('swal', function (data) {
+                var payload = Array.isArray(data) ? (data[0] || {}) : (data || {});
+                if (payload.icon === 'error') {
+                    window.alert(payload.text || 'Something went wrong. Please try again.');
+                }
+            });
+        });
+    </script>
 </body>
 </html>

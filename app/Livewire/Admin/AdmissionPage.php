@@ -75,6 +75,27 @@ class AdmissionPage extends Component
 
     public function save(): void
     {
+        $this->validate([
+            'process_heading' => ['nullable', 'string', 'max:255'],
+            'intro_label' => ['nullable', 'string', 'max:255'],
+            'intro_title' => ['nullable', 'string', 'max:255'],
+            'intro_subtitle' => ['nullable', 'string', 'max:5000'],
+            'featured_badge' => ['nullable', 'string', 'max:255'],
+            'admission_process' => ['nullable', 'string'],
+            'first_admission_heading' => ['nullable', 'string', 'max:255'],
+            'first_admission_intro' => ['nullable', 'string'],
+            'first_admission_documents' => ['array'],
+            'first_admission_documents.*' => ['nullable', 'string', 'max:500'],
+            'transfer_heading' => ['nullable', 'string', 'max:255'],
+            'transfer_intro' => ['nullable', 'string'],
+            'transfer_documents' => ['array'],
+            'transfer_documents.*' => ['nullable', 'string', 'max:500'],
+            'cta_title' => ['nullable', 'string', 'max:255'],
+            'cta_text' => ['nullable', 'string', 'max:5000'],
+            'cta_primary_btn' => ['nullable', 'string', 'max:255'],
+            'cta_secondary_btn' => ['nullable', 'string', 'max:255'],
+        ]);
+
         $content = AdmissionPageModel::content();
         $content->update([
             'intro_label' => $this->intro_label,

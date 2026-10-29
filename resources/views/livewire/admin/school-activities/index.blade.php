@@ -78,6 +78,7 @@
                         <button type="button" class="btn-close" wire:click="closeFormModal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
+                        @include('partials.form-error')
                         <form wire:submit.prevent="save" id="activity-form">
                             <div class="mb-3">
                                 <label class="form-label">Title</label>

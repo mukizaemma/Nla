@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\SchoolActivities;
 use App\Models\SchoolActivity;
 use App\Models\SchoolActivityImage;
 use App\Support\AdminImageUploader;
+use App\Support\UserFacingError;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -34,7 +35,7 @@ class Index extends Component
     {
         return [
             'title' => ['required', 'string', 'max:255'],
-            'excerpt' => ['nullable', 'string', 'max:500'],
+            'excerpt' => ['nullable', 'string', 'max:5000'],
             'content' => ['nullable', 'string'],
             'image_path' => ['nullable', 'string', 'max:500'],
             'published_at' => ['nullable', 'date'],
@@ -141,7 +142,7 @@ class Index extends Component
                     'sort_order' => ++$maxOrder,
                 ]);
             } catch (\Throwable $e) {
-                $this->addError('galleryFiles', $e->getMessage());
+                $this->addError('galleryFiles', UserFacingError::message($e));
 
                 return;
             }

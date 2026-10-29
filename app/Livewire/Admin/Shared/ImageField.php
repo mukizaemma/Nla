@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Shared;
 
 use App\Models\MediaAsset;
 use App\Support\AdminImageUploader;
+use App\Support\UserFacingError;
 use Livewire\Attributes\Modelable;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -94,7 +95,7 @@ class ImageField extends Component
             $this->upload = null;
             $this->showLibrary = false;
         } catch (\Throwable $e) {
-            $this->addError('upload', $e->getMessage());
+            $this->addError('upload', UserFacingError::message($e));
             $this->upload = null;
         }
     }

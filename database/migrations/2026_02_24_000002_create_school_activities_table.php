@@ -13,8 +13,8 @@ return new class extends Migration
             $table->string('title');
             $table->string('slug')->unique();
             $table->longText('content')->nullable();
-            $table->string('excerpt')->nullable();
-            $table->string('image_path')->nullable();
+            $table->text('excerpt')->nullable();
+            $table->string('image_path', 500)->nullable();
             $table->timestamp('published_at')->nullable();
             $table->boolean('is_active')->default(true);
             $table->unsignedInteger('sort_order')->nullable();

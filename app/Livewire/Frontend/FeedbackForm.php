@@ -26,7 +26,7 @@ class FeedbackForm extends Component
             'full_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
-            'message' => ['required', 'string', 'min:10'],
+            'message' => ['required', 'string', 'min:10', 'max:10000'],
             'rating_out_of_10' => ['nullable', 'integer', 'min:1', 'max:10'],
             'rating_category' => ['nullable', 'string', 'in:overall,department,service,facility,staff,other'],
             'wants_response' => ['boolean'],

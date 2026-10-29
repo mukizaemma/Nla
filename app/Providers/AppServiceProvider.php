@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Livewire\Hooks\FriendlyFormErrors;
 use App\Models\Partner;
 use App\Models\ClinicalDepartment;
 use App\Models\WebsiteSetting;
 use App\Support\SiteContent;
+use Livewire\Livewire;
 use App\ContextProviders\Livewire3SafeContextProviderDetector;
 use App\Renderers\Livewire3SafeErrorPageRenderer;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -21,7 +23,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        Livewire::componentHook(FriendlyFormErrors::class);
     }
 
     /**

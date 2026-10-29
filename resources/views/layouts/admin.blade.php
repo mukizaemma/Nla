@@ -231,15 +231,17 @@
         document.addEventListener('DOMContentLoaded', function () {
             if (window.Livewire) {
                 Livewire.on('swal', (data = {}) => {
+                    const payload = Array.isArray(data) ? (data[0] || {}) : (data || {});
+                    const toast = payload.toast !== false;
                     Swal.fire({
-                        toast: true,
-                        position: data.position || 'top-end',
-                        timer: data.timer ?? 2600,
-                        timerProgressBar: true,
-                        showConfirmButton: data.showConfirmButton ?? false,
-                        icon: data.icon || 'success',
-                        title: data.title || 'Success',
-                        text: data.text || ''
+                        toast,
+                        position: payload.position || (toast ? 'top-end' : 'center'),
+                        timer: toast ? (payload.timer ?? 2600) : undefined,
+                        timerProgressBar: toast,
+                        showConfirmButton: payload.showConfirmButton ?? !toast,
+                        icon: payload.icon || 'success',
+                        title: payload.title || (toast ? 'Success' : 'Notice'),
+                        text: payload.text || ''
                     });
                 });
 

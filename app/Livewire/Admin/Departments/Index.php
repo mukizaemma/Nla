@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Departments;
 
 use App\Models\ClinicalDepartment;
 use App\Support\AdminImageUploader;
+use App\Support\UserFacingError;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -189,7 +190,7 @@ class Index extends Component
                     $paths[] = $result['path'];
                     $added++;
                 } catch (\Throwable $e) {
-                    $this->addError('gallery_images', $e->getMessage());
+                    $this->addError('gallery_images', UserFacingError::message($e));
 
                     return;
                 }

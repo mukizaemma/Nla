@@ -7,6 +7,7 @@ use App\Models\WebsiteSetting;
 use App\Models\User;
 use App\Support\AdminImageUploader;
 use App\Support\SiteFonts;
+use App\Support\UserFacingError;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Component;
@@ -257,7 +258,7 @@ class Settings extends Component
             'phone_reception' => ['nullable', 'string', 'max:50'],
             'phone_urgency' => ['nullable', 'string', 'max:50'],
             'phone_whatsapp' => ['nullable', 'string', 'max:50'],
-            'address' => ['nullable', 'string'],
+            'address' => ['nullable', 'string', 'max:10000'],
             'map_embed_url' => ['nullable', 'string'],
         ]);
 
@@ -304,12 +305,12 @@ class Settings extends Component
                     }
                 },
             ],
-            'facebook_url' => ['nullable', 'url'],
-            'instagram_url' => ['nullable', 'url'],
-            'linkedin_url' => ['nullable', 'url'],
-            'youtube_url' => ['nullable', 'url'],
-            'x_url' => ['nullable', 'url'],
-            'threads_url' => ['nullable', 'url'],
+            'facebook_url' => ['nullable', 'url', 'max:255'],
+            'instagram_url' => ['nullable', 'url', 'max:255'],
+            'linkedin_url' => ['nullable', 'url', 'max:255'],
+            'youtube_url' => ['nullable', 'url', 'max:255'],
+            'x_url' => ['nullable', 'url', 'max:255'],
+            'threads_url' => ['nullable', 'url', 'max:255'],
             'logo_path' => ['nullable', 'string', 'max:500'],
             'home_background_image_path' => ['nullable', 'string', 'max:500'],
             'gallery_external_url' => ['nullable', 'string', 'max:500'],
@@ -364,8 +365,8 @@ class Settings extends Component
     public function saveHeaders(): void
     {
         $this->validate([
-            'headers.*.title' => ['nullable', 'string'],
-            'headers.*.caption' => ['nullable', 'string'],
+            'headers.*.title' => ['nullable', 'string', 'max:255'],
+            'headers.*.caption' => ['nullable', 'string', 'max:10000'],
             'headerImages.*' => ['nullable', 'image', 'max:'.AdminImageUploader::ABSOLUTE_UPLOAD_MAX_KB],
         ]);
 
@@ -397,7 +398,7 @@ class Settings extends Component
                     $model->image_path = $result['path'];
                     $this->headers[$index]['image_path'] = $model->image_path;
                 } catch (\Throwable $e) {
-                    $this->addError('headerImages.'.$index, $e->getMessage());
+                    $this->addError('headerImages.'.$index, UserFacingError::message($e));
 
                     return;
                 }

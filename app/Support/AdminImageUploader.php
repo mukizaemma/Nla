@@ -157,7 +157,7 @@ class AdminImageUploader
                     'final_bytes' => $originalBytes,
                     'will_resize' => true,
                     'allowed' => false,
-                    'message' => $e->getMessage(),
+                    'message' => UserFacingError::message($e),
                 ];
             }
         } finally {
